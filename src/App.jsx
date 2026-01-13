@@ -322,22 +322,18 @@ export default function MotionTracker() {
     renderFrame();
   }, [renderFrame]); 
 
-  // --- GLOBAL EVENT LISTENERS ---
-  useEffect(() => {
-    const handleGlobalMove = (e) => handleMouseMove(e);
-    const handleGlobalUp = (e) => handleMouseUp(e);
-    
-    if (dragState || isTracking) {
-      window.addEventListener('mousemove', handleGlobalMove);
-      window.addEventListener('mouseup', handleGlobalUp);
+  // --- 5. POINTER LOGIC (MOUSE + TOUCH) ---
+  
+  // Helper to extract coordinates from either mouse or touch events
+  const getEventPoint = (e) => {
+    if (e.changedTouches && e.changedTouches.length > 0) {
+      return { clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY };
+    } else if (e.touches && e.touches.length > 0) {
+      return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
     }
-    return () => {
-      window.removeEventListener('mousemove', handleGlobalMove);
-      window.removeEventListener('mouseup', handleGlobalUp);
-    };
-  }, [dragState, isTracking, draggedPointIndex, points, calibrationPoints, origin, originAngle, zoom, videoDims]); 
+    return { clientX: e.clientX, clientY: e.clientY };
+  };
 
-  // --- 5. MOUSE LOGIC ---
   const getCanvasCoords = (clientX, clientY) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
@@ -349,9 +345,11 @@ export default function MotionTracker() {
     };
   };
 
-  const handleMouseDown = (e) => {
+  const handlePointerDown = (e) => {
     if (!videoRef.current || showInputModal) return;
-    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    
+    const { clientX, clientY } = getEventPoint(e);
+    const { x, y } = getCanvasCoords(clientX, clientY);
     const hitRadius = 15 / zoom; 
 
     for (let i = points.length - 1; i >= 0; i--) {
@@ -360,7 +358,7 @@ export default function MotionTracker() {
       if (dist < hitRadius) {
         setDragState('point');
         setDraggedPointIndex(i);
-        setMousePos({ x: e.clientX, y: e.clientY });
+        setMousePos({ x: clientX, y: clientY });
         return;
       }
     }
@@ -372,7 +370,7 @@ export default function MotionTracker() {
         if (dist < hitRadius + 5/zoom) {
           setDragState('calibration');
           setDraggedPointIndex(i);
-          setMousePos({ x: e.clientX, y: e.clientY });
+          setMousePos({ x: clientX, y: clientY });
           return;
         }
       }
@@ -398,14 +396,16 @@ export default function MotionTracker() {
     }
   };
 
-  const handleMouseMove = (e) => {
+  const handlePointerMove = (e) => {
+    const { clientX, clientY } = getEventPoint(e);
+
     if (isTracking || dragState) {
-        setMousePos({ x: e.clientX, y: e.clientY });
+        setMousePos({ x: clientX, y: clientY });
     }
 
     if (!dragState) return;
 
-    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    const { x, y } = getCanvasCoords(clientX, clientY);
 
     if (dragState === 'origin') {
       setOrigin({ x, y });
@@ -419,8 +419,8 @@ export default function MotionTracker() {
       setPoints(updatedPoints);
       if (trashRef.current) {
         const trashRect = trashRef.current.getBoundingClientRect();
-        const isOver = e.clientX >= trashRect.left && e.clientX <= trashRect.right &&
-                       e.clientY >= trashRect.top && e.clientY <= trashRect.bottom;
+        const isOver = clientX >= trashRect.left && clientX <= trashRect.right &&
+                       clientY >= trashRect.top && clientY <= trashRect.bottom;
         setIsHoveringTrash(isOver);
       }
     } else if (dragState === 'calibration' && draggedPointIndex !== null) {
@@ -430,9 +430,11 @@ export default function MotionTracker() {
     }
   };
 
-  const handleMouseUp = (e) => {
+  const handlePointerUp = (e) => {
+    const { clientX, clientY } = getEventPoint(e);
+
     if (dragState === 'tracking_potential') {
-      const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+      const { x, y } = getCanvasCoords(clientX, clientY);
       const time = videoRef.current.currentTime;
       setPoints([...points, { id: Date.now(), x, y, time }]);
       stepForward();
@@ -446,6 +448,27 @@ export default function MotionTracker() {
     }
     setDragState(null);
   };
+
+  // --- GLOBAL EVENT LISTENERS (Updated for Touch) ---
+  useEffect(() => {
+    const handleGlobalMove = (e) => handlePointerMove(e);
+    const handleGlobalUp = (e) => handlePointerUp(e);
+    
+    if (dragState || isTracking) {
+      window.addEventListener('mousemove', handleGlobalMove);
+      window.addEventListener('mouseup', handleGlobalUp);
+      // Passive false allows preventDefault if needed, but we handle that via CSS touch-action
+      window.addEventListener('touchmove', handleGlobalMove, { passive: false }); 
+      window.addEventListener('touchend', handleGlobalUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMove);
+      window.removeEventListener('mouseup', handleGlobalUp);
+      window.removeEventListener('touchmove', handleGlobalMove);
+      window.removeEventListener('touchend', handleGlobalUp);
+    };
+  }, [dragState, isTracking, draggedPointIndex, points, calibrationPoints, origin, originAngle, zoom, videoDims]); 
+
 
   // --- HELPERS ---
   const handleScaleButtonClick = () => {
@@ -1004,7 +1027,7 @@ export default function MotionTracker() {
       {/* HEADER WITH VIEW SWITCHER */}
       <div className={`p-4 border-b flex justify-between items-center shrink-0 h-16 ${styles.panel}`}>
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-blue-400">PhysTracker</h1>
+          <h1 className="text-xl font-bold text-blue-400">Motion Tracker</h1>
           <div className={`flex rounded p-1 border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
             <button onClick={() => setViewMode('tracker')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'tracker' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white shadow-sm text-slate-900') : styles.textSecondary + ' hover:' + styles.text}`}>Tracker</button>
             <button onClick={() => setViewMode('analysis')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'analysis' ? (isDark ? 'bg-slate-700 text-blue-400' : 'bg-white shadow-sm text-blue-600') : styles.textSecondary + ' hover:' + styles.text}`}>Analysis</button>
@@ -1050,7 +1073,17 @@ export default function MotionTracker() {
                   <div className="relative shadow-2xl origin-top-left bg-black mt-10 flex-none" ref={containerRef} style={{ width: Math.floor(videoDims.w * zoom), height: Math.floor(videoDims.h * zoom) }}>
                     {/* MEMOIZED VIDEO ELEMENT WITH GPU LAYER FORCE */}
                     {videoElement}
-                    <canvas ref={canvasRef} width={Math.floor(videoDims.w * zoom)} height={Math.floor(videoDims.h * zoom)} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10 }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseEnter={() => setIsHoveringCanvas(true)} onMouseLeave={() => setIsHoveringCanvas(false)} className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-none' : 'cursor-default'}`} />
+                    <canvas ref={canvasRef} 
+                        width={Math.floor(videoDims.w * zoom)} 
+                        height={Math.floor(videoDims.h * zoom)} 
+                        style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10, touchAction: 'none' }} // Added touchAction: 'none'
+                        onMouseDown={handlePointerDown}
+                        onTouchStart={handlePointerDown} 
+                        onMouseMove={handlePointerMove} // These work for mouse, global listener handles dragging off-canvas
+                        onMouseEnter={() => setIsHoveringCanvas(true)} 
+                        onMouseLeave={() => setIsHoveringCanvas(false)} 
+                        className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-none' : 'cursor-default'}`} 
+                    />
                   </div>
                 ) : ( <div className={`text-center mt-20 ${styles.textSecondary}`}> <Upload size={48} className="mx-auto mb-4 opacity-50" /> <p>Upload a video to begin analysis</p> </div> )}
               </div>
