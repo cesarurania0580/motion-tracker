@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera } from 'lucide-react';
+import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate } from 'lucide-react';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
@@ -103,6 +103,7 @@ export default function MotionTracker() {
 
   // Analysis State
   const [fitModel, setFitModel] = useState('none'); 
+  const [legendPosition, setLegendPosition] = useState('top-left');
 
   const [isCalibrating, setIsCalibrating] = useState(false); 
   const [calibrationPoints, setCalibrationPoints] = useState([]); 
@@ -786,7 +787,34 @@ export default function MotionTracker() {
     svgClone.style.fontFamily = "Arial, Helvetica, sans-serif";
     
     const texts = svgClone.querySelectorAll("text");
-    texts.forEach(t => { t.setAttribute("fill", "black"); t.style.fill = "black"; });
+    texts.forEach(t => { 
+      t.setAttribute("fill", "black"); 
+      t.style.fill = "black"; 
+      t.style.fontFamily = "Arial, Helvetica, sans-serif";
+
+      // 1. MAKE TICKS BIGGER & BOLDER
+      if (t.classList.contains("recharts-cartesian-axis-tick-value")) {
+        t.style.fontSize = "24px"; 
+        t.style.fontWeight = "bold";
+      }
+
+      // 2. MAKE AXIS LABELS BIGGER & ADJUST SPACING
+      if (t.textContent === labels[plotX]) {
+        t.style.fontSize = "32px"; 
+        t.style.fontWeight = "bold";
+        // Push X label down (increase dy)
+        let currentDy = parseFloat(t.getAttribute("dy")) || 0;
+        t.setAttribute("dy", currentDy + 30);
+      }
+
+      if (t.textContent === labels[plotY]) {
+        t.style.fontSize = "32px"; 
+        t.style.fontWeight = "bold";
+        // Push Y label left (decrease dy because of rotation)
+        let currentDy = parseFloat(t.getAttribute("dy")) || 0;
+        t.setAttribute("dy", currentDy - 30);
+      }
+    });
 
     const gridLines = svgClone.querySelectorAll(".recharts-cartesian-grid line");
     gridLines.forEach(l => { 
@@ -837,6 +865,7 @@ export default function MotionTracker() {
         svgClone.appendChild(borderRect);
     } else {
         minX = 60; minY = 20; 
+        maxX = 740; maxY = 380;
     }
 
     const serializer = new XMLSerializer();
@@ -849,9 +878,13 @@ export default function MotionTracker() {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         
-        const topMargin = 70;
-        canvas.width = img.width;
-        canvas.height = img.height + topMargin;
+        const topMargin = 100; // Increased margin for bigger title
+        const leftMargin = 60; // Extra left margin for Y axis label
+        const bottomMargin = 60; // Extra bottom margin for X axis label
+        const rightMargin = 20; // Extra right padding
+
+        canvas.width = img.width + leftMargin + rightMargin;
+        canvas.height = img.height + topMargin + bottomMargin;
 
         ctx.fillStyle = "white";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -862,20 +895,44 @@ export default function MotionTracker() {
         const xVar = plotX === 'time' ? 't' : 'x';
         const modelName = fitEquation?.type === 'Linear' ? "Linear Regression" : (fitEquation?.type === 'Quadratic' ? "Quadratic Fit" : "Plot");
         
-        ctx.font = "bold 26px Arial";
+        ctx.font = "bold 36px Arial"; // Bigger Title
         ctx.fillStyle = "black";
         ctx.textAlign = "center";
         const titleText = `${modelName} of ${labels[plotY].split('(')[0].trim()} vs ${labels[plotX].split('(')[0].trim()}`;
-        ctx.fillText(titleText, canvas.width / 2, 45);
+        ctx.fillText(titleText, canvas.width / 2, 55);
 
-        ctx.drawImage(img, 0, topMargin);
+        // Draw image shifted by margins
+        ctx.drawImage(img, leftMargin, topMargin);
 
-        if (fitEquation) {
-            const boxX = minX + 20;
-            const boxY = topMargin + minY + 20; 
-            const boxW = 360; 
-            const boxH = 130; 
-            
+        if (fitEquation && legendPosition !== 'none') {
+            const padding = 20;
+            const boxW = 400; // Slightly wider for bigger text
+            const boxH = 150; // Slightly taller
+
+            // Default Top Left (relative to grid)
+            let boxX = leftMargin + minX + padding;
+            let boxY = topMargin + minY + padding;
+
+            // Coordinate calculations based on grid boundaries found in SVG (minX, maxX, minY, maxY)
+            switch(legendPosition) {
+                case 'top-right':
+                    boxX = leftMargin + maxX - boxW - padding;
+                    boxY = topMargin + minY + padding;
+                    break;
+                case 'bottom-left':
+                    boxX = leftMargin + minX + padding;
+                    boxY = topMargin + maxY - boxH - padding;
+                    break;
+                case 'bottom-right':
+                    boxX = leftMargin + maxX - boxW - padding;
+                    boxY = topMargin + maxY - boxH - padding;
+                    break;
+                case 'top-left':
+                default:
+                    // Already set
+                    break;
+            }
+
             ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
             ctx.fillRect(boxX, boxY, boxW, boxH);
             ctx.strokeStyle = "#999";
@@ -883,7 +940,7 @@ export default function MotionTracker() {
             ctx.strokeRect(boxX, boxY, boxW, boxH);
 
             ctx.textAlign = "left";
-            ctx.font = "18px Arial"; 
+            ctx.font = "20px Arial"; // Bigger Legend Text
             ctx.fillStyle = "black";
 
             ctx.beginPath();
@@ -911,9 +968,9 @@ export default function MotionTracker() {
             } else if (fitEquation.type === 'Quadratic') {
                equationText = `${yVar} = ${fitEquation.params.A.toFixed(4)}${xVar}² + ${fitEquation.params.B.toFixed(4)}${xVar} + ${fitEquation.params.C.toFixed(4)}`;
             }
-            ctx.fillText(equationText, boxX + 50, boxY + 95);
+            ctx.fillText(equationText, boxX + 50, boxY + 100);
 
-            ctx.fillText(`R² = ${fitEquation.r2.toFixed(4)}`, boxX + 50, boxY + 120); 
+            ctx.fillText(`R² = ${fitEquation.r2.toFixed(4)}`, boxX + 50, boxY + 130); 
         }
 
         const pngUrl = canvas.toDataURL("image/png");
@@ -1131,6 +1188,23 @@ export default function MotionTracker() {
 
                {/* EXPORT BUTTONS */}
                <div className="flex flex-col gap-2 mt-4">
+                  
+                  {/* NEW: Legend Position Control */}
+                  <label className={`text-xs uppercase font-bold tracking-wider mb-1 ${styles.textSecondary} flex items-center gap-2`}>
+                    <LayoutTemplate size={14} /> Legend Position (Export)
+                  </label>
+                  <select 
+                    value={legendPosition} 
+                    onChange={(e) => setLegendPosition(e.target.value)} 
+                    className={`border rounded px-3 py-2 text-sm mb-2 focus:outline-none focus:border-blue-500 ${styles.input}`}
+                  >
+                    <option value="top-left">Top Left</option>
+                    <option value="top-right">Top Right</option>
+                    <option value="bottom-left">Bottom Left</option>
+                    <option value="bottom-right">Bottom Right</option>
+                    <option value="none">None (Hide)</option>
+                  </select>
+
                   <button onClick={exportScientificGraph} className={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm`}>
                     <Camera size={18} /> Export Graph (PNG)
                   </button>
