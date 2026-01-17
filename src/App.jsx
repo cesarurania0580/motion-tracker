@@ -1027,7 +1027,7 @@ export default function MotionTracker() {
       {/* HEADER WITH VIEW SWITCHER */}
       <div className={`p-4 border-b flex justify-between items-center shrink-0 h-16 ${styles.panel}`}>
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-blue-400">Motion Tracker</h1>
+          <h1 className="text-xl font-bold text-blue-400">PhysTracker</h1>
           <div className={`flex rounded p-1 border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
             <button onClick={() => setViewMode('tracker')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'tracker' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white shadow-sm text-slate-900') : styles.textSecondary + ' hover:' + styles.text}`}>Tracker</button>
             <button onClick={() => setViewMode('analysis')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'analysis' ? (isDark ? 'bg-slate-700 text-blue-400' : 'bg-white shadow-sm text-blue-600') : styles.textSecondary + ' hover:' + styles.text}`}>Analysis</button>
