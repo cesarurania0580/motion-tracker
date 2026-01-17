@@ -3,6 +3,7 @@ import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Acti
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
+// Memoized to prevent layout thrashing. 
 const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedData, onEnded, onError, onTimeUpdate, onSeeked }) => {
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', transform: 'translateZ(0)', willChange: 'transform' }}>
@@ -12,7 +13,7 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
         src={src} 
         className="block w-full h-full object-fill" 
         onLoadedMetadata={onLoadedMetadata} 
-        onLoadedData={onLoadedData} 
+        onLoadedData={onLoadedData} // Critical: Fires when first frame is ready to draw
         onEnded={onEnded} 
         onError={onError}
         onTimeUpdate={onTimeUpdate} 
@@ -130,12 +131,6 @@ export default function MotionTracker() {
 
   const [uncertaintyPx, setUncertaintyPx] = useState(10);
 
-  // --- NEW: TOUCH RETICLE STATE ---
-  // { x, y } in video coordinates
-  const [activeReticle, setActiveReticle] = useState(null);
-  // Track potential tap for registering point
-  const touchStartRef = useRef(null); // { time, x, y }
-
   // Timeline State
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -178,7 +173,6 @@ export default function MotionTracker() {
       setCurrentTime(0);
       setFitModel('none');
       setViewMode('tracker');
-      setActiveReticle(null);
     }
   };
 
@@ -199,7 +193,9 @@ export default function MotionTracker() {
     
     // Clear and set transform
     ctx.setTransform(zoom, 0, 0, zoom, 0, 0); 
-    ctx.clearRect(0, 0, videoDims.w, videoDims.h);
+    // FIX GHOSTING: Clear a larger area than just the video dimensions
+    // This removes any artifacts from handles/scales drawn on the edge
+    ctx.clearRect(-50, -50, videoDims.w + 100, videoDims.h + 100);
 
     // 1. DRAW VIDEO FRAME
     // Only draw if we have valid dimensions
@@ -300,51 +296,7 @@ export default function MotionTracker() {
       drawPointMarker(point.x, point.y, isDraggingThis, index + 1);
     });
 
-    // --- DRAW ACTIVE TOUCH RETICLE ---
-    if (activeReticle) {
-      const { x, y } = activeReticle;
-      const r = lw(25); // Radius of the target ring
-      
-      ctx.save();
-      
-      // Dashed outer ring to indicate "Move Me"
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.lineWidth = lw(2);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.setLineDash([lw(4), lw(4)]);
-      ctx.stroke();
-      ctx.setLineDash([]); // Reset
-
-      // Crosshairs
-      ctx.beginPath();
-      ctx.moveTo(x - r - lw(5), y); ctx.lineTo(x + r + lw(5), y);
-      ctx.moveTo(x, y - r - lw(5)); ctx.lineTo(x, y + r + lw(5));
-      ctx.lineWidth = lw(1.5);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.stroke();
-
-      // Inner "Tap" Zone (Target)
-      ctx.beginPath();
-      ctx.arc(x, y, lw(6), 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'; // Red transparent fill
-      ctx.fill();
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = lw(2);
-      ctx.stroke();
-      
-      // Instruction Label
-      ctx.font = `bold ${lw(10)}px sans-serif`;
-      ctx.fillStyle = 'white';
-      ctx.textAlign = 'center';
-      ctx.shadowColor = 'black';
-      ctx.shadowBlur = 2;
-      ctx.fillText("TAP HERE", x, y - r - lw(8));
-      
-      ctx.restore();
-    }
-
-  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, activeReticle]);
+  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx]);
 
   // --- 3. TRIGGER RENDER LOOP ---
   useEffect(() => {
@@ -372,22 +324,22 @@ export default function MotionTracker() {
     renderFrame();
   }, [renderFrame]); 
 
-  // --- GLOBAL EVENT LISTENERS ---
+  // --- GLOBAL EVENT LISTENERS (POINTER) ---
   useEffect(() => {
-    const handleGlobalMove = (e) => handleMouseMove(e);
-    const handleGlobalUp = (e) => handleMouseUp(e);
+    const handleGlobalMove = (e) => handlePointerMove(e);
+    const handleGlobalUp = (e) => handlePointerUp(e);
     
     if (dragState || isTracking) {
-      window.addEventListener('mousemove', handleGlobalMove);
-      window.addEventListener('mouseup', handleGlobalUp);
+      window.addEventListener('pointermove', handleGlobalMove);
+      window.addEventListener('pointerup', handleGlobalUp);
     }
     return () => {
-      window.removeEventListener('mousemove', handleGlobalMove);
-      window.removeEventListener('mouseup', handleGlobalUp);
+      window.removeEventListener('pointermove', handleGlobalMove);
+      window.removeEventListener('pointerup', handleGlobalUp);
     };
   }, [dragState, isTracking, draggedPointIndex, points, calibrationPoints, origin, originAngle, zoom, videoDims]); 
 
-  // --- 5. MOUSE & TOUCH LOGIC ---
+  // --- 5. POINTER LOGIC (Unified Mouse & Touch) ---
   const getCanvasCoords = (clientX, clientY) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
@@ -399,11 +351,18 @@ export default function MotionTracker() {
     };
   };
 
-  // --- DESKTOP HANDLERS ---
-  const handleMouseDown = (e) => {
+  const handlePointerDown = (e) => {
     if (!videoRef.current || showInputModal) return;
+    
+    // Capture pointer to track dragging even if finger slides off canvas
+    e.currentTarget.setPointerCapture(e.pointerId);
+
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
-    const hitRadius = 15 / zoom; 
+    
+    // Adaptive Hit Radius: Larger for touch (finger), standard for mouse
+    // Base radius 15 for mouse, 25 for touch
+    const baseRadius = e.pointerType === 'touch' ? 25 : 15;
+    const hitRadius = baseRadius / zoom; 
 
     for (let i = points.length - 1; i >= 0; i--) {
       const p = points[i];
@@ -420,7 +379,7 @@ export default function MotionTracker() {
       for (let i = 0; i < calibrationPoints.length; i++) {
         const p = calibrationPoints[i];
         const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
-        if (dist < hitRadius + 5/zoom) {
+        if (dist < hitRadius + 5/zoom) { // Slightly larger hitbox for scale handles
           setDragState('calibration');
           setDraggedPointIndex(i);
           setMousePos({ x: e.clientX, y: e.clientY });
@@ -449,12 +408,13 @@ export default function MotionTracker() {
     }
   };
 
-  const handleMouseMove = (e) => {
+  const handlePointerMove = (e) => {
     if (isTracking || dragState) {
         setMousePos({ x: e.clientX, y: e.clientY });
     }
 
     if (!dragState) return;
+    e.preventDefault(); // Prevents default touch actions like scrolling
 
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
 
@@ -481,7 +441,7 @@ export default function MotionTracker() {
     }
   };
 
-  const handleMouseUp = (e) => {
+  const handlePointerUp = (e) => {
     if (dragState === 'tracking_potential') {
       const { x, y } = getCanvasCoords(e.clientX, e.clientY);
       const time = videoRef.current.currentTime;
@@ -495,127 +455,12 @@ export default function MotionTracker() {
       setIsHoveringTrash(false);
       setDraggedPointIndex(null);
     }
-    setDragState(null);
-  };
-
-  // --- TOUCH HANDLERS (Tablet/iPad Logic) ---
-  const handleTouchStart = (e) => {
-    if (!videoRef.current || showInputModal) return;
     
-    // Check if user is touching UI elements (handled by other logic?)
-    // In React onTouchStart bubbles, so we are good.
-    // e.preventDefault(); // Prevents mouse emulation but allows scrolling if not careful. handled by touch-action css.
-
-    const touch = e.touches[0];
-    const { x, y } = getCanvasCoords(touch.clientX, touch.clientY);
-    const hitRadius = 25 / zoom; // Larger hit radius for finger
-
-    // Save start info for "Tap" detection
-    touchStartRef.current = { time: Date.now(), x: touch.clientX, y: touch.clientY };
-
-    // 1. Check existing points (Edit Priority)
-    for (let i = points.length - 1; i >= 0; i--) {
-      const p = points[i];
-      const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
-      if (dist < hitRadius) {
-        setDragState('point');
-        setDraggedPointIndex(i);
-        return;
-      }
+    // Release pointer capture
+    if (e.currentTarget.releasePointerCapture) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
     }
-
-    // 2. Check Origin
-    if (origin) {
-      const distOrigin = Math.sqrt(Math.pow(x - origin.x, 2) + Math.pow(y - origin.y, 2));
-      if (distOrigin < hitRadius) { setDragState('origin'); return; }
-    }
-
-    // 3. TRACKING LOGIC (Reticle Behavior)
-    if (!isCalibrating && isTracking) {
-      
-      // If we have a reticle, check if we are grabbing it or tapping it
-      if (activeReticle) {
-        const distToReticle = Math.sqrt(Math.pow(x - activeReticle.x, 2) + Math.pow(y - activeReticle.y, 2));
-        // Hitbox for grabbing the reticle is generous
-        if (distToReticle < 60 / zoom) {
-           setDragState('reticle'); // We are interacting with the reticle
-           return;
-        }
-      }
-
-      // If touching blank space, move reticle to here immediately?
-      // Or just spawn it.
-      setActiveReticle({ x, y });
-      setDragState('reticle');
-    }
-  };
-
-  const handleTouchMove = (e) => {
-    const touch = e.touches[0];
-    const { x, y } = getCanvasCoords(touch.clientX, touch.clientY);
-
-    if (dragState === 'point' && draggedPointIndex !== null) {
-      const updatedPoints = [...points];
-      updatedPoints[draggedPointIndex] = { ...updatedPoints[draggedPointIndex], x, y };
-      setPoints(updatedPoints);
-    } else if (dragState === 'origin') {
-      setOrigin({ x, y });
-    } else if (dragState === 'reticle') {
-      setActiveReticle({ x, y });
-    }
-  };
-
-  const handleTouchEnd = (e) => {
-    // Check for TAP (short duration, small movement)
-    const now = Date.now();
-    const touchEnd = e.changedTouches[0];
-    
-    if (touchStartRef.current) {
-        const dt = now - touchStartRef.current.time;
-        const dx = touchEnd.clientX - touchStartRef.current.x;
-        const dy = touchEnd.clientY - touchStartRef.current.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-
-        const isTap = dt < 300 && dist < 20;
-
-        if (isTap && dragState === 'reticle' && activeReticle) {
-            // We tapped on the reticle! REGISTER POINT.
-            // But we must be sure we tapped *ON* the reticle, which we checked in Start.
-            // Actually, if dragState is 'reticle' and it was a tap, it means we touched the reticle (or created it)
-            // and didn't drag it. So we should register.
-            
-            // Wait, if I tap empty space, it spawns reticle (in Start).
-            // Then End happens. Is this a register? 
-            // Better UX: 
-            // 1. Drag to move. 
-            // 2. Tap existing reticle to register.
-            // If I tap empty space, it just moves reticle there. It shouldn't register immediately.
-            
-            // Let's refine: 
-            // Only register if we tapped roughly the *center* of the reticle relative to where it was *before* we potentially moved it?
-            // Actually, simplest Vernier style:
-            // "Tap around the center of the reticle so the point is registered"
-            
-            // Logic:
-            // If I just spawned it, don't register.
-            // If it was already there, and I tapped it, register.
-            
-            // For now, let's keep it simple: Tapping the reticle ADDS the point.
-            // To prevent accidental adds when just trying to move it:
-            // Maybe we require the reticle to exist *before* the touch start?
-            // But I can't track that easily without more state.
-            
-            // Let's rely on the "Tap Center" label visual cue.
-            // If the user tapped the reticle, we add the point.
-            const time = videoRef.current.currentTime;
-            setPoints([...points, { id: Date.now(), x: activeReticle.x, y: activeReticle.y, time }]);
-            stepForward();
-        }
-    }
-
-    if (dragState === 'point') setDraggedPointIndex(null);
     setDragState(null);
-    touchStartRef.current = null;
   };
 
   // --- HELPERS ---
@@ -1224,14 +1069,10 @@ export default function MotionTracker() {
                     <canvas ref={canvasRef} 
                         width={Math.floor(videoDims.w * zoom)} 
                         height={Math.floor(videoDims.h * zoom)} 
-                        style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10, touchAction: 'none' }}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove} 
-                        onMouseUp={handleMouseUp}
-                        // Touch handlers with preventDefault
-                        onTouchStart={handleTouchStart}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
+                        style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10, touchAction: 'none' }} 
+                        onPointerDown={handlePointerDown} 
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
                         onMouseEnter={() => setIsHoveringCanvas(true)} 
                         onMouseLeave={() => setIsHoveringCanvas(false)} 
                         className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-none' : 'cursor-default'}`} 
