@@ -236,6 +236,8 @@ export default function MotionTracker() {
     };
 
     const drawMagnifier = (x, y, isDragging) => {
+      // Logic moved to "active interaction" section below to handle dynamic magnifier
+      // This helper was for static visual representation of calibration points
       if (isDragging) return; 
       ctx.beginPath();
       ctx.lineWidth = lw(2);
@@ -294,7 +296,69 @@ export default function MotionTracker() {
       drawPointMarker(point.x, point.y, isDraggingThis, index + 1);
     });
 
-  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx]);
+    // --- MAGNIFIER / LOUPE RENDERING ---
+    // Show loupe when dragging a point or tracking new points
+    if ((dragState === 'tracking_potential' || dragState === 'point') && mousePos) {
+      const rect = canvas.getBoundingClientRect();
+      const relX = mousePos.x - rect.left;
+      const relY = mousePos.y - rect.top;
+      
+      // Calculate cursor position in video coordinates
+      const videoX = relX / zoom;
+      const videoY = relY / zoom;
+
+      // Loupe Settings
+      const magZoom = 2; // 2x Magnification
+      const r = 60 / zoom; // Screen radius fixed visually
+      const offset = 80 / zoom; // Offset above finger
+
+      const loupeX = videoX;
+      const loupeY = videoY - offset;
+
+      ctx.save();
+      
+      // Draw Loupe Circle (Background & Clip)
+      ctx.beginPath();
+      ctx.arc(loupeX, loupeY, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'black';
+      ctx.fill();
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 3 / zoom;
+      ctx.stroke();
+      ctx.clip(); // Clip contents to the circle
+
+      // Draw Magnified Video
+      // We want to show a smaller area (source) into the loupe (destination)
+      // Destination size = 2 * r
+      // Source size = Destination size / magnification
+      const destSize = 2 * r;
+      const srcSize = destSize / magZoom;
+      
+      const sX = videoX - srcSize / 2;
+      const sY = videoY - srcSize / 2;
+      const dX = loupeX - r;
+      const dY = loupeY - r;
+
+      if (video.readyState >= 2) {
+          ctx.drawImage(video, sX, sY, srcSize, srcSize, dX, dY, destSize, destSize);
+      }
+
+      // Draw Crosshair inside Loupe
+      ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+      ctx.lineWidth = 1 / zoom; // Thin line
+      ctx.beginPath();
+      // Vertical line
+      ctx.moveTo(loupeX, dY); 
+      ctx.lineTo(loupeX, dY + destSize);
+      // Horizontal line
+      ctx.moveTo(dX, loupeY); 
+      ctx.lineTo(dX + destSize, loupeY);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, mousePos]); // Added mousePos to dependency
 
   // --- 3. TRIGGER RENDER LOOP ---
   useEffect(() => {
@@ -393,6 +457,7 @@ export default function MotionTracker() {
 
     if (!isCalibrating && isTracking) {
       setDragState('tracking_potential');
+      setMousePos({ x: clientX, y: clientY }); // Ensure position is set immediately for loupe
     }
   };
 
