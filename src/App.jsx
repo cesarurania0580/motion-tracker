@@ -3,7 +3,6 @@ import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Acti
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
-// Memoized to prevent layout thrashing. 
 const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedData, onEnded, onError, onTimeUpdate, onSeeked }) => {
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', transform: 'translateZ(0)', willChange: 'transform' }}>
@@ -13,7 +12,7 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
         src={src} 
         className="block w-full h-full object-fill" 
         onLoadedMetadata={onLoadedMetadata} 
-        onLoadedData={onLoadedData} // Critical: Fires when first frame is ready to draw
+        onLoadedData={onLoadedData} 
         onEnded={onEnded} 
         onError={onError}
         onTimeUpdate={onTimeUpdate} 
@@ -24,43 +23,37 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
   );
 });
 
+// --- HELPER: VIDEO FRAME CONSTANTS ---
+const FPS = 30;
+const FRAME_DURATION = 1 / FPS; 
+
 // --- MATH HELPER: NICE NUMBERS ALGORITHM ---
 const calculateNiceScale = (minValue, maxValue) => {
   if (!isFinite(minValue) || !isFinite(maxValue) || minValue === maxValue) return { min: 0, max: 10, ticks: [0, 10] };
-
   const range = maxValue - minValue;
   const padding = range === 0 ? 1 : range * 0.05;
   const paddedMin = minValue - padding;
   const paddedMax = maxValue + padding;
   const paddedRange = paddedMax - paddedMin;
-
   const targetTickCount = 6; 
   const rawStep = paddedRange / targetTickCount;
   const mag = Math.floor(Math.log10(rawStep));
   const magPow = Math.pow(10, mag);
   let magStep = rawStep / magPow;
-
   if (magStep < 1.5) magStep = 1;
   else if (magStep < 2.25) magStep = 2;
   else if (magStep < 3.5) magStep = 2.5; 
   else if (magStep < 7.5) magStep = 5;
   else magStep = 10;
-
   const niceStep = magStep * magPow;
   const niceMin = Math.floor(paddedMin / niceStep) * niceStep;
   const niceMax = Math.ceil(paddedMax / niceStep) * niceStep;
-
   const ticks = [];
   for (let t = niceMin; t <= niceMax + (niceStep/100); t += niceStep) {
     ticks.push(parseFloat(t.toFixed(4))); 
   }
-
   return { min: niceMin, max: niceMax, ticks };
 };
-
-// --- HELPER: VIDEO FRAME CONSTANTS ---
-const FPS = 30;
-const FRAME_DURATION = 1 / FPS; 
 
 export default function MotionTracker() {
   // --- STATE MANAGEMENT ---
@@ -72,7 +65,6 @@ export default function MotionTracker() {
   // THEME STATE
   const [theme, setTheme] = useState('dark');
   const isDark = theme === 'dark';
-
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
 
   // --- THEME CONFIGURATION ---
@@ -193,9 +185,13 @@ export default function MotionTracker() {
     
     // Clear and set transform
     ctx.setTransform(zoom, 0, 0, zoom, 0, 0); 
-    // FIX GHOSTING: Clear a larger area than just the video dimensions
-    // This removes any artifacts from handles/scales drawn on the edge
-    ctx.clearRect(-50, -50, videoDims.w + 100, videoDims.h + 100);
+    
+    // FIX FOR GHOSTING: Clear the entire canvas area completely using absolute coords
+    // Temporarily reset transform to clear everything
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
 
     // 1. DRAW VIDEO FRAME
     // Only draw if we have valid dimensions
@@ -207,7 +203,7 @@ export default function MotionTracker() {
 
     // 2. Draw UI Elements
     const drawPointMarker = (x, y, isDragging = false, label = null) => {
-      if (isDragging) return; 
+      // Draw even if dragging for feedback
       ctx.save();
       
       ctx.beginPath();
@@ -237,8 +233,7 @@ export default function MotionTracker() {
       ctx.restore();
     };
 
-    const drawMagnifier = (x, y, isDragging) => {
-      if (isDragging) return; 
+    const drawScaleHandle = (x, y) => {
       ctx.beginPath();
       ctx.lineWidth = lw(2);
       ctx.strokeStyle = '#00ff00'; 
@@ -286,8 +281,8 @@ export default function MotionTracker() {
         ctx.stroke();
       }
       calibrationPoints.forEach((p, i) => {
-        const isDraggingThis = dragState === 'calibration' && draggedPointIndex === i;
-        drawMagnifier(p.x, p.y, isDraggingThis);
+        // Always draw handles
+        drawScaleHandle(p.x, p.y);
       });
     }
 
@@ -324,7 +319,7 @@ export default function MotionTracker() {
     renderFrame();
   }, [renderFrame]); 
 
-  // --- GLOBAL EVENT LISTENERS (POINTER) ---
+  // --- GLOBAL EVENT LISTENERS (Switching to Pointer Events) ---
   useEffect(() => {
     const handleGlobalMove = (e) => handlePointerMove(e);
     const handleGlobalUp = (e) => handlePointerUp(e);
@@ -339,7 +334,7 @@ export default function MotionTracker() {
     };
   }, [dragState, isTracking, draggedPointIndex, points, calibrationPoints, origin, originAngle, zoom, videoDims]); 
 
-  // --- 5. POINTER LOGIC (Unified Mouse & Touch) ---
+  // --- 5. POINTER LOGIC (Replaces Mouse Logic) ---
   const getCanvasCoords = (clientX, clientY) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
@@ -353,14 +348,14 @@ export default function MotionTracker() {
 
   const handlePointerDown = (e) => {
     if (!videoRef.current || showInputModal) return;
-    
-    // Capture pointer to track dragging even if finger slides off canvas
-    e.currentTarget.setPointerCapture(e.pointerId);
+
+    // Capture pointer to track dragging outside canvas
+    e.target.setPointerCapture(e.pointerId);
 
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
     
-    // Adaptive Hit Radius: Larger for touch (finger), standard for mouse
-    // Base radius 15 for mouse, 25 for touch
+    // Adaptive Hit Radius: Larger for Touch, Standard for Mouse
+    // This makes it easier to grab handles on an iPad
     const baseRadius = e.pointerType === 'touch' ? 25 : 15;
     const hitRadius = baseRadius / zoom; 
 
@@ -379,7 +374,7 @@ export default function MotionTracker() {
       for (let i = 0; i < calibrationPoints.length; i++) {
         const p = calibrationPoints[i];
         const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
-        if (dist < hitRadius + 5/zoom) { // Slightly larger hitbox for scale handles
+        if (dist < hitRadius + 5/zoom) { // Slightly bigger hit area for scale handles
           setDragState('calibration');
           setDraggedPointIndex(i);
           setMousePos({ x: e.clientX, y: e.clientY });
@@ -414,7 +409,9 @@ export default function MotionTracker() {
     }
 
     if (!dragState) return;
-    e.preventDefault(); // Prevents default touch actions like scrolling
+    
+    // Prevent scrolling on touch devices while dragging
+    e.preventDefault();
 
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
 
@@ -457,9 +454,10 @@ export default function MotionTracker() {
     }
     
     // Release pointer capture
-    if (e.currentTarget.releasePointerCapture) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
+    if (e.target.releasePointerCapture) {
+      e.target.releasePointerCapture(e.pointerId);
     }
+
     setDragState(null);
   };
 
@@ -1070,7 +1068,7 @@ export default function MotionTracker() {
                         width={Math.floor(videoDims.w * zoom)} 
                         height={Math.floor(videoDims.h * zoom)} 
                         style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10, touchAction: 'none' }} 
-                        onPointerDown={handlePointerDown} 
+                        onPointerDown={handlePointerDown} // Unified pointer events!
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}
                         onMouseEnter={() => setIsHoveringCanvas(true)} 
