@@ -3,6 +3,7 @@ import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Acti
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
+// Memoized to prevent layout thrashing. 
 const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedData, onEnded, onError, onTimeUpdate, onSeeked }) => {
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', transform: 'translateZ(0)', willChange: 'transform' }}>
@@ -12,7 +13,7 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
         src={src} 
         className="block w-full h-full object-fill" 
         onLoadedMetadata={onLoadedMetadata} 
-        onLoadedData={onLoadedData} 
+        onLoadedData={onLoadedData} // Critical: Fires when first frame is ready to draw
         onEnded={onEnded} 
         onError={onError}
         onTimeUpdate={onTimeUpdate} 
@@ -23,39 +24,45 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
   );
 });
 
-// --- HELPER: VIDEO FRAME CONSTANTS ---
-const FPS = 30;
-const FRAME_DURATION = 1 / FPS; 
-
 // --- MATH HELPER: NICE NUMBERS ALGORITHM ---
 const calculateNiceScale = (minValue, maxValue) => {
   if (!isFinite(minValue) || !isFinite(maxValue) || minValue === maxValue) return { min: 0, max: 10, ticks: [0, 10] };
+
   const range = maxValue - minValue;
   const padding = range === 0 ? 1 : range * 0.05;
   const paddedMin = minValue - padding;
   const paddedMax = maxValue + padding;
   const paddedRange = paddedMax - paddedMin;
+
   const targetTickCount = 6; 
   const rawStep = paddedRange / targetTickCount;
   const mag = Math.floor(Math.log10(rawStep));
   const magPow = Math.pow(10, mag);
   let magStep = rawStep / magPow;
+
   if (magStep < 1.5) magStep = 1;
   else if (magStep < 2.25) magStep = 2;
   else if (magStep < 3.5) magStep = 2.5; 
   else if (magStep < 7.5) magStep = 5;
   else magStep = 10;
+
   const niceStep = magStep * magPow;
   const niceMin = Math.floor(paddedMin / niceStep) * niceStep;
   const niceMax = Math.ceil(paddedMax / niceStep) * niceStep;
+
   const ticks = [];
   for (let t = niceMin; t <= niceMax + (niceStep/100); t += niceStep) {
     ticks.push(parseFloat(t.toFixed(4))); 
   }
+
   return { min: niceMin, max: niceMax, ticks };
 };
 
-export default function MotionTracker() {
+// --- HELPER: VIDEO FRAME CONSTANTS ---
+const FPS = 30;
+const FRAME_DURATION = 1 / FPS; 
+
+export default function App() {
   // --- STATE MANAGEMENT ---
   const [points, setPoints] = useState([]);
   const [videoSrc, setVideoSrc] = useState(null);
@@ -65,6 +72,7 @@ export default function MotionTracker() {
   // THEME STATE
   const [theme, setTheme] = useState('dark');
   const isDark = theme === 'dark';
+
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
 
   // --- THEME CONFIGURATION ---
@@ -109,6 +117,8 @@ export default function MotionTracker() {
   const [originAngle, setOriginAngle] = useState(0); 
 
   const [isTracking, setIsTracking] = useState(false);
+  // NEW: Reticle State for Phase 1 Step 2
+  const [reticlePos, setReticlePos] = useState(null);
 
   // Zoom & Dimensions
   const [zoom, setZoom] = useState(1.0);
@@ -116,17 +126,18 @@ export default function MotionTracker() {
 
   const [dragState, setDragState] = useState(null); 
   const [draggedPointIndex, setDraggedPointIndex] = useState(null);
+  
+  // NEW: Ref to track drag distance for Tap vs Drag detection
+  const dragStartRef = useRef({ x: 0, y: 0, time: 0 });
+  // NEW: Ref to store offset between cursor and object center during drag
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  
   const [isHoveringTrash, setIsHoveringTrash] = useState(false);
   
   const [isHoveringCanvas, setIsHoveringCanvas] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   const [uncertaintyPx, setUncertaintyPx] = useState(10);
-
-  // --- RETICLE & MULTI-TOUCH STATE ---
-  const [activeReticle, setActiveReticle] = useState(null); 
-  const activePointers = useRef(new Map()); // For tracking pointer count
-  const touchStartRef = useRef(null); // For tap detection
 
   // Timeline State
   const [duration, setDuration] = useState(0);
@@ -139,6 +150,8 @@ export default function MotionTracker() {
   const scrollContainerRef = useRef(null);
   const chartRef = useRef(null); 
   const animationFrameRef = useRef(null);
+  // NEW: Ref for video callback ID
+  const videoCallbackRef = useRef(null);
 
   // --- GRAPH STATE ---
   const [plotX, setPlotX] = useState('time');
@@ -164,13 +177,13 @@ export default function MotionTracker() {
       setZoom(1.0);
       setZeroTime(true); 
       setIsTracking(false);
+      setReticlePos(null); // Reset reticle
       setVideoDims({ w: 0, h: 0 });
       setUncertaintyPx(10);
       setDuration(0);
       setCurrentTime(0);
       setFitModel('none');
       setViewMode('tracker');
-      setActiveReticle(null);
     }
   };
 
@@ -179,6 +192,14 @@ export default function MotionTracker() {
       videoRef.current.load();
     }
   }, [videoSrc]);
+
+  // NEW: Initialize Reticle when Tracking starts
+  useEffect(() => {
+    if (isTracking && !reticlePos && videoDims.w > 0) {
+        // Place reticle at center of screen initially
+        setReticlePos({ x: videoDims.w / 2, y: videoDims.h / 2 });
+    }
+  }, [isTracking, videoDims]);
 
   // --- 2. UNIFIED RENDER LOOP (CANVAS-FIRST APPROACH) ---
   const renderFrame = useCallback(() => {
@@ -191,9 +212,10 @@ export default function MotionTracker() {
     
     // Clear and set transform
     ctx.setTransform(zoom, 0, 0, zoom, 0, 0); 
-    ctx.clearRect(-50, -50, videoDims.w + 100, videoDims.h + 100);
+    ctx.clearRect(0, 0, videoDims.w, videoDims.h);
 
     // 1. DRAW VIDEO FRAME
+    // Only draw if we have valid dimensions
     if (video.readyState >= 2) {
         ctx.drawImage(video, 0, 0, videoDims.w, videoDims.h);
     }
@@ -202,7 +224,9 @@ export default function MotionTracker() {
 
     // 2. Draw UI Elements
     const drawPointMarker = (x, y, isDragging = false, label = null) => {
+      if (isDragging) return; 
       ctx.save();
+      
       ctx.beginPath();
       ctx.arc(x, y, uncertaintyPx, 0, 2 * Math.PI);
       ctx.fillStyle = 'rgba(255, 0, 0, 0.15)'; 
@@ -230,16 +254,62 @@ export default function MotionTracker() {
       ctx.restore();
     };
 
-    const drawScaleHandle = (x, y) => {
+    const drawMagnifier = (x, y, isDragging) => {
+      if (isDragging) return; // Don't draw if dragging (handled by pointer events logic usually) but here we want to see it?
+      // Actually, standard magnifier draws ON TOP.
+      ctx.save();
       ctx.beginPath();
       ctx.lineWidth = lw(2);
       ctx.strokeStyle = '#00ff00'; 
-      ctx.arc(x, y, lw(15), 0, 2 * Math.PI); 
+      ctx.arc(x, y, lw(20), 0, 2 * Math.PI); // Slightly larger
       ctx.stroke();
+      
+      // Crosshair inside magnifier
       ctx.beginPath();
-      ctx.arc(x, y, lw(3), 0, 2 * Math.PI); 
-      ctx.fillStyle = '#00ff00';
-      ctx.fill();
+      ctx.moveTo(x - lw(5), y); ctx.lineTo(x + lw(5), y);
+      ctx.moveTo(x, y - lw(5)); ctx.lineTo(x, y + lw(5));
+      ctx.stroke();
+      
+      ctx.restore();
+    };
+    
+    // NEW: Draw Persistent Reticle (BIGGER AND BETTER)
+    const drawReticle = (x, y, isDragging) => {
+        ctx.save();
+        
+        // Outer Circle - Larger
+        ctx.beginPath();
+        ctx.arc(x, y, lw(30), 0, 2 * Math.PI); // Radius 30 (was 15)
+        ctx.lineWidth = lw(2);
+        ctx.strokeStyle = isDragging ? '#fbbf24' : '#4ade80'; // Amber when dragging, Green when static
+        
+        // Add semi-transparent fill for better visual "grabbability"
+        ctx.fillStyle = isDragging ? 'rgba(251, 191, 36, 0.1)' : 'rgba(74, 222, 128, 0.1)'; 
+        ctx.fill();
+        ctx.stroke();
+        
+        // Inner Crosshair - Extended
+        ctx.beginPath();
+        ctx.moveTo(x - lw(50), y); ctx.lineTo(x + lw(50), y); // Length 50 (was 25)
+        ctx.moveTo(x, y - lw(50)); ctx.lineTo(x, y + lw(50)); // Length 50 (was 25)
+        ctx.lineWidth = lw(1.5);
+        ctx.strokeStyle = isDragging ? '#fbbf24' : '#4ade80'; // Ensure stroke color matches
+        ctx.stroke();
+        
+        // Center Dot
+        ctx.beginPath();
+        ctx.arc(x, y, lw(3), 0, 2 * Math.PI); // Slightly bigger dot
+        ctx.fillStyle = isDragging ? '#fbbf24' : '#4ade80';
+        ctx.fill();
+        
+        // Label
+        if (!isDragging) {
+            ctx.fillStyle = '#4ade80';
+            ctx.font = `bold ${lw(14)}px sans-serif`; // Bigger font
+            ctx.fillText("TAP TO FIRE", x + lw(35), y - lw(35));
+        }
+        
+        ctx.restore();
     };
 
     if (origin) {
@@ -255,13 +325,11 @@ export default function MotionTracker() {
       ctx.moveTo(0, -length); ctx.lineTo(0, length);
       ctx.stroke();
       
-      // Origin Center
       ctx.beginPath(); ctx.arc(0, 0, lw(7), 0, 2 * Math.PI); 
       ctx.fillStyle = '#3b82f6'; ctx.fill(); 
       
-      // Rotation Handle
       const handleDist = lw(100); 
-      ctx.beginPath(); ctx.arc(handleDist, 0, lw(8), 0, 2 * Math.PI); 
+      ctx.beginPath(); ctx.arc(handleDist, 0, lw(6), 0, 2 * Math.PI);
       ctx.fillStyle = 'rgba(59, 130, 246, 0.2)'; ctx.strokeStyle = '#3b82f6'; ctx.fill(); ctx.stroke();
       
       ctx.fillStyle = '#3b82f6'; ctx.font = `bold ${lw(12)}px Arial`;
@@ -280,7 +348,8 @@ export default function MotionTracker() {
         ctx.stroke();
       }
       calibrationPoints.forEach((p, i) => {
-        drawScaleHandle(p.x, p.y);
+        const isDraggingThis = dragState === 'calibration' && draggedPointIndex === i;
+        drawMagnifier(p.x, p.y, isDraggingThis);
       });
     }
 
@@ -288,79 +357,63 @@ export default function MotionTracker() {
       const isDraggingThis = dragState === 'point' && draggedPointIndex === index;
       drawPointMarker(point.x, point.y, isDraggingThis, index + 1);
     });
-
-    // --- DRAW ACTIVE RETICLE ---
-    // Only if tracking, mouse over canvas, not calibrating
-    // Uses activeReticle if set (Touch), or mousePos (Desktop hover)
-    if (isTracking && !dragState && !isCalibrating && isHoveringCanvas) {
-       let cx, cy;
-       
-       if (activeReticle) {
-           cx = activeReticle.x;
-           cy = activeReticle.y;
-       } else if (mousePos) {
-           const rect = canvas.getBoundingClientRect();
-           cx = (mousePos.x - rect.left) / zoom;
-           cy = (mousePos.y - rect.top) / zoom;
-       }
-
-       if (cx !== undefined && cy !== undefined) {
-         // Reticle visual logic - simple crosshair for desktop, offset circle for touch?
-         // For now, simple crosshair to match PC style
-         ctx.save();
-         
-         // 1. Dashed Outer Ring (Visualizes Drag Zone if Touch)
-         if (activeReticle) {
-            const r = lw(50); // Larger visual for touch reticle
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
-            ctx.lineWidth = lw(2);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.setLineDash([lw(5), lw(5)]);
-            ctx.stroke();
-            ctx.setLineDash([]); 
-            
-            // "Tap" hint
-            ctx.fillStyle = 'white';
-            ctx.font = `bold ${lw(12)}px sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.fillText("TAP", cx, cy - r - lw(5));
-         }
-
-         // 2. Crosshairs
-         const size = lw(20);
-         ctx.strokeStyle = 'white';
-         ctx.lineWidth = lw(1);
-         ctx.beginPath();
-         ctx.moveTo(cx - size, cy); ctx.lineTo(cx + size, cy);
-         ctx.moveTo(cx, cy - size); ctx.lineTo(cx, cy + size);
-         ctx.stroke();
-         
-         ctx.restore();
-       }
+    
+    // NEW: Render Reticle if Tracking
+    if (isTracking && reticlePos) {
+        drawReticle(reticlePos.x, reticlePos.y, dragState === 'reticle' || dragState === 'reticle_move_jump');
     }
 
-  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, mousePos, isTracking, isHoveringCanvas, activeReticle]);
+  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking]);
 
-  // --- 3. TRIGGER RENDER LOOP ---
+  // --- 3. TRIGGER RENDER LOOP (UPDATED: FRAME SYNC) ---
   useEffect(() => {
-    const loop = () => {
+    const performRender = () => {
+       renderFrame();
+    };
+
+    const onVideoFrame = (now, metadata) => {
       if (videoRef.current && !videoRef.current.paused) {
-        setCurrentTime(videoRef.current.currentTime);
-        renderFrame(); 
-        animationFrameRef.current = requestAnimationFrame(loop);
+        // CRITICAL FIX: Use metadata.mediaTime for frame-perfect sync during playback
+        setCurrentTime(metadata.mediaTime);
+        performRender();
+        // Re-register callback
+        videoCallbackRef.current = videoRef.current.requestVideoFrameCallback(onVideoFrame);
       }
     };
 
-    if (isPlaying) {
-      animationFrameRef.current = requestAnimationFrame(loop);
+    const loopFallback = () => {
+      if (videoRef.current && !videoRef.current.paused) {
+        setCurrentTime(videoRef.current.currentTime);
+        performRender();
+        animationFrameRef.current = requestAnimationFrame(loopFallback);
+      }
+    };
+
+    if (isPlaying && videoRef.current) {
+      if ('requestVideoFrameCallback' in videoRef.current) {
+        // MODERN API: Synced to video refresh rate
+        videoCallbackRef.current = videoRef.current.requestVideoFrameCallback(onVideoFrame);
+      } else {
+        // FALLBACK: Synced to screen refresh rate (older browsers)
+        animationFrameRef.current = requestAnimationFrame(loopFallback);
+      }
     } else {
-      renderFrame();
+      // If paused, just draw once to ensure UI is up to date
+      performRender();
+      
+      // Cleanup loops
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (videoCallbackRef.current && videoRef.current && 'cancelVideoFrameCallback' in videoRef.current) {
+        videoRef.current.cancelVideoFrameCallback(videoCallbackRef.current);
+      }
     }
 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (videoCallbackRef.current && videoRef.current && 'cancelVideoFrameCallback' in videoRef.current) {
+        // Safety check for ref existence during unmount
+         videoRef.current.cancelVideoFrameCallback(videoCallbackRef.current);
+      }
     };
   }, [isPlaying, renderFrame]);
 
@@ -368,22 +421,7 @@ export default function MotionTracker() {
     renderFrame();
   }, [renderFrame]); 
 
-  // --- GLOBAL EVENT LISTENERS (POINTER) ---
-  useEffect(() => {
-    const handleGlobalMove = (e) => handlePointerMove(e);
-    const handleGlobalUp = (e) => handlePointerUp(e);
-    
-    if (dragState) {
-      window.addEventListener('pointermove', handleGlobalMove);
-      window.addEventListener('pointerup', handleGlobalUp);
-    }
-    return () => {
-      window.removeEventListener('pointermove', handleGlobalMove);
-      window.removeEventListener('pointerup', handleGlobalUp);
-    };
-  }, [dragState, points, calibrationPoints, origin, originAngle, zoom, videoDims, mousePos, activeReticle]); 
-
-  // --- 5. POINTER LOGIC (Unified Mouse & Touch) ---
+  // --- 5. POINTER LOGIC (Replaces Mouse Logic) ---
   const getCanvasCoords = (clientX, clientY) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
@@ -398,20 +436,35 @@ export default function MotionTracker() {
   const handlePointerDown = (e) => {
     if (!videoRef.current || showInputModal) return;
 
-    // Capture pointer
-    e.target.setPointerCapture(e.pointerId);
+    // CRITICAL: Prevent default browser behavior (scrolling) and capture the pointer
+    // This allows dragging to continue even if the pointer leaves the canvas bounds
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
 
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
-    const isTouch = e.pointerType === 'touch';
-    
-    // Adaptive Hit Radius
-    const hitRadius = (isTouch ? 30 : 15) / zoom; 
-    const reticleRadius = 50 / zoom;
+    const hitRadius = 15 / zoom; 
 
-    // Track touch start for tap detection
-    touchStartRef.current = { time: Date.now(), x: e.clientX, y: e.clientY };
+    // PRIORITY 1: RETICLE LOGIC (Moves to top to prevent dragging underlying points)
+    if (!isCalibrating && isTracking && reticlePos) {
+      // Distance to current reticle position
+      const distToReticle = Math.sqrt(Math.pow(x - reticlePos.x, 2) + Math.pow(y - reticlePos.y, 2));
+      
+      // Define Reticle Hit Radius - MUCH LARGER for easier grabbing
+      const reticleHitRadius = 60 / zoom; 
 
-    // 1. Check existing points
+      if (distToReticle < reticleHitRadius) {
+          // User hit the reticle -> Start Dragging/Aiming
+          setDragState('reticle');
+          // Store START position and time to detect TAP vs DRAG later
+          dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+          // Calculate offset so dragging is relative
+          dragOffsetRef.current = { x: reticlePos.x - x, y: reticlePos.y - y };
+          // Return immediately so we don't accidentally select a point underneath
+          return;
+      }
+    }
+
+    // 2. Check Existing Points (Secondary Priority)
     for (let i = points.length - 1; i >= 0; i--) {
       const p = points[i];
       const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
@@ -423,12 +476,12 @@ export default function MotionTracker() {
       }
     }
 
-    // 2. Check Calibration Scale
+    // 3. Check Calibration Points
     if (isCalibrating || (isScaleVisible && calibrationPoints.length > 0)) {
       for (let i = 0; i < calibrationPoints.length; i++) {
         const p = calibrationPoints[i];
         const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
-        if (dist < hitRadius + 5/zoom) { 
+        if (dist < hitRadius + 5/zoom) {
           setDragState('calibration');
           setDraggedPointIndex(i);
           setMousePos({ x: e.clientX, y: e.clientY });
@@ -437,59 +490,49 @@ export default function MotionTracker() {
       }
     }
 
-    // 3. Check Origin
+    // 4. Check Origin
     if (origin) {
+      const distOrigin = Math.sqrt(Math.pow(x - origin.x, 2) + Math.pow(y - origin.y, 2));
+      if (distOrigin < hitRadius) { setDragState('origin'); return; }
+      
       const handleDist = 100 / zoom; 
       const handleX = origin.x + handleDist * Math.cos(originAngle);
       const handleY = origin.y + handleDist * Math.sin(originAngle);
       const distHandle = Math.sqrt(Math.pow(x - handleX, 2) + Math.pow(y - handleY, 2));
-      
-      if (distHandle < 35 / zoom) { setDragState('rotate'); return; }
-
-      const distOrigin = Math.sqrt(Math.pow(x - origin.x, 2) + Math.pow(y - origin.y, 2));
-      if (distOrigin < 25 / zoom) { setDragState('origin'); return; }
+      if (distHandle < hitRadius) { setDragState('rotate'); return; }
     }
 
-    // 4. Setting Origin Mode
     if (isSettingOrigin) {
       setOrigin({ x, y }); setOriginAngle(0); setIsSettingOrigin(false); return;
     }
 
-    // 5. Tracking Mode
-    if (!isCalibrating && isTracking) {
-        // If Touch: Spawn or Move Virtual Cursor
-        if (isTouch) {
-            // Check if tapping existing reticle (to fire) logic happens in Up
-            // Here we check if we are dragging the reticle
-             if (activeReticle) {
-                const dist = Math.sqrt(Math.pow(x - activeReticle.x, 2) + Math.pow(y - activeReticle.y, 2));
-                if (dist < reticleRadius) {
-                   setDragState('reticle_drag');
-                   setMousePos({ offsetX: activeReticle.x - x, offsetY: activeReticle.y - y });
-                   return;
-                }
-             }
-             // Clicked elsewhere? Move reticle here
-             setActiveReticle({ x, y });
-             setDragState('reticle_drag');
-             setMousePos({ offsetX: 0, offsetY: 0 });
-        } else {
-            // Mouse: Standard "Click to add" behavior
-            setDragState('tracking_potential');
-        }
+    // 5. Reticle Jump (Fallback if nothing else hit)
+    if (!isCalibrating && isTracking && reticlePos) {
+       // User hit empty space -> Jump Reticle to here (Coarse Aiming)
+       setDragState('reticle_move_jump');
+       setReticlePos({ x, y });
+       dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+       setMousePos({ x: e.clientX, y: e.clientY });
+       return;
     }
   };
 
   const handlePointerMove = (e) => {
-    // Update global mouse pos (for desktop hover)
-    setMousePos({ x: e.clientX, y: e.clientY });
+    if (isTracking || dragState) {
+        setMousePos({ x: e.clientX, y: e.clientY });
+    }
 
     if (!dragState) return;
-    e.preventDefault(); 
 
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
 
-    if (dragState === 'point' && draggedPointIndex !== null) {
+    if (dragState === 'origin') {
+      setOrigin({ x, y });
+    } else if (dragState === 'rotate' && origin) {
+      const dx = x - origin.x;
+      const dy = y - origin.y;
+      setOriginAngle(Math.atan2(dy, dx));
+    } else if (dragState === 'point' && draggedPointIndex !== null) {
       const updatedPoints = [...points];
       updatedPoints[draggedPointIndex] = { ...updatedPoints[draggedPointIndex], x, y };
       setPoints(updatedPoints);
@@ -499,46 +542,40 @@ export default function MotionTracker() {
                        e.clientY >= trashRect.top && e.clientY <= trashRect.bottom;
         setIsHoveringTrash(isOver);
       }
-    } else if (dragState === 'origin') {
-      setOrigin({ x, y });
-    } else if (dragState === 'rotate' && origin) {
-      const dx = x - origin.x;
-      const dy = y - origin.y;
-      setOriginAngle(Math.atan2(dy, dx));
     } else if (dragState === 'calibration' && draggedPointIndex !== null) {
       const updatedCalib = [...calibrationPoints];
       updatedCalib[draggedPointIndex] = { x, y };
       setCalibrationPoints(updatedCalib);
-    } else if (dragState === 'reticle_drag') {
-       const targetX = x + (mousePos.offsetX || 0);
-       const targetY = y + (mousePos.offsetY || 0);
-       setActiveReticle({ x: targetX, y: targetY });
+    } else if (dragState === 'reticle') {
+        // Drag using the relative offset
+        setReticlePos({ 
+            x: x + dragOffsetRef.current.x, 
+            y: y + dragOffsetRef.current.y 
+        });
+    } else if (dragState === 'reticle_move_jump') {
+        // Absolute move for jumps
+        setReticlePos({ x, y });
     }
   };
 
   const handlePointerUp = (e) => {
-    const isTouch = e.pointerType === 'touch';
+    // Release the capture so other elements can interact again
+    e.currentTarget.releasePointerCapture(e.pointerId);
 
-    if (dragState === 'tracking_potential' && !isTouch) {
-      // Mouse Click -> Add Point
-      const { x, y } = getCanvasCoords(e.clientX, e.clientY);
-      const time = videoRef.current.currentTime;
-      setPoints([...points, { id: Date.now(), x, y, time }]);
-      stepForward();
-    } else if (dragState === 'reticle_drag' && isTouch && activeReticle && touchStartRef.current) {
-      // Touch Tap -> Add Point IF small movement
-      const now = Date.now();
-      const dt = now - touchStartRef.current.time;
-      const dx = e.clientX - touchStartRef.current.x;
-      const dy = e.clientY - touchStartRef.current.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      
-      if (dt < 300 && dist < 10) {
-          // It was a tap on the reticle! Fire!
-          const time = videoRef.current.currentTime;
-          setPoints([...points, { id: Date.now(), x: activeReticle.x, y: activeReticle.y, time }]);
-          stepForward();
-      }
+    if (dragState === 'reticle') {
+        // CHECK FOR TAP vs DRAG
+        // Calculate screen distance moved since pointer down
+        const dist = Math.sqrt(Math.pow(e.clientX - dragStartRef.current.x, 2) + Math.pow(e.clientY - dragStartRef.current.y, 2));
+        const dt = Date.now() - dragStartRef.current.time;
+        
+        // Threshold: If moved less than 10 pixels and short duration, treat as TAP
+        if (dist < 10) {
+            // FIRE! Record Point
+            const time = videoRef.current.currentTime;
+            setPoints([...points, { id: Date.now(), x: reticlePos.x, y: reticlePos.y, time }]);
+            stepForward();
+            // Reticle stays where it is, ready for next adjustment
+        }
     } else if (dragState === 'point') {
       if (isHoveringTrash) {
         const newPoints = points.filter((_, i) => i !== draggedPointIndex);
@@ -548,9 +585,7 @@ export default function MotionTracker() {
       setDraggedPointIndex(null);
     }
     
-    if (e.target.releasePointerCapture) {
-      e.target.releasePointerCapture(e.pointerId);
-    }
+    // Reset drag state
     setDragState(null);
   };
 
@@ -564,6 +599,7 @@ export default function MotionTracker() {
         setIsSettingOrigin(false);
         setIsScaleVisible(true);
         setIsTracking(false);
+        setReticlePos(null);
         const w = videoDims.w || 600;
         const h = videoDims.h || 400;
         setCalibrationPoints([{ x: w * 0.4, y: h * 0.5 }, { x: w * 0.6, y: h * 0.5 }]);
@@ -1140,7 +1176,7 @@ export default function MotionTracker() {
           <>
             <div className={`flex-1 flex flex-col min-w-0 ${styles.bg}`}>
               <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start justify-center p-4 relative ${styles.workspaceBg}`}>
-                {isHoveringCanvas && isTracking && !dragState && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 mix-blend-difference" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="20" cy="20" r="16" stroke="white" strokeWidth="2" /> <path d="M20 2 L20 12 M20 28 L20 38 M2 20 L12 20 M28 20 L38 20" stroke="white" strokeWidth="2" /> </svg> </div> )}
+                {/* REMOVED OLD SVG RETICLE */}
                 {dragState === 'point' && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="13" cy="13" r="4" fill="#ef4444" stroke="white" strokeWidth="1.5" /> </svg> </div> )}
                 {dragState === 'calibration' && ( <div className="fixed z-[100] w-12 h-12 rounded-full border-4 border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.8)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center" style={{ left: mousePos.x, top: mousePos.y }}> <div className="w-1.5 h-1.5 bg-green-400 rounded-full" /> </div> )}
                 <div ref={trashRef} className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}> <Trash2 size={32} /> <span className="text-xs font-bold mt-2"> Drop to Delete </span> </div>
@@ -1157,17 +1193,7 @@ export default function MotionTracker() {
                   <div className="relative shadow-2xl origin-top-left bg-black mt-10 flex-none" ref={containerRef} style={{ width: Math.floor(videoDims.w * zoom), height: Math.floor(videoDims.h * zoom) }}>
                     {/* MEMOIZED VIDEO ELEMENT WITH GPU LAYER FORCE */}
                     {videoElement}
-                    <canvas ref={canvasRef} 
-                        width={Math.floor(videoDims.w * zoom)} 
-                        height={Math.floor(videoDims.h * zoom)} 
-                        style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10, touchAction: 'none' }} 
-                        onPointerDown={handlePointerDown} // Unified pointer events!
-                        onPointerMove={handlePointerMove}
-                        onPointerUp={handlePointerUp}
-                        onMouseEnter={() => setIsHoveringCanvas(true)} 
-                        onMouseLeave={() => setIsHoveringCanvas(false)} 
-                        className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-none' : 'cursor-default'}`} 
-                    />
+                    <canvas ref={canvasRef} width={Math.floor(videoDims.w * zoom)} height={Math.floor(videoDims.h * zoom)} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10, touchAction: 'none' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onMouseEnter={() => setIsHoveringCanvas(true)} onMouseLeave={() => setIsHoveringCanvas(false)} className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} />
                   </div>
                 ) : ( <div className={`text-center mt-20 ${styles.textSecondary}`}> <Upload size={48} className="mx-auto mb-4 opacity-50" /> <p>Upload a video to begin analysis</p> </div> )}
               </div>
