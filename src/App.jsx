@@ -1,5 +1,29 @@
+/**
+ * PhysTracker
+ * Version: 1.0.0
+ * Author: Cesar Cortes
+ * Powered by: Gemini Pro AI
+ * License: MIT
+ * * Copyright (c) 2026 Cesar Cortes
+ * * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate } from 'lucide-react';
+import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X } from 'lucide-react';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
@@ -64,7 +88,38 @@ const FRAME_DURATION = 1 / FPS;
 
 export default function App() {
   // --- STATE MANAGEMENT ---
-  const [points, setPoints] = useState([]);
+  
+  // NEW: Multi-Object State
+  const [objects, setObjects] = useState([
+    { id: 'A', name: 'Object A', color: '#ef4444', points: [] }, // Red
+    { id: 'B', name: 'Object B', color: '#3b82f6', points: [] }  // Blue
+  ]);
+  const [activeObjId, setActiveObjId] = useState('A');
+
+  // DERIVED STATE: 'points' acts as a proxy for the active object's points
+  // This ensures all existing logic (math, rendering, graphing) works without massive refactoring
+  const points = useMemo(() => {
+    return objects.find(o => o.id === activeObjId)?.points || [];
+  }, [objects, activeObjId]);
+
+  // PROXY SETTER: Updates only the active object within the objects array
+  const setPoints = useCallback((newPointsInput) => {
+    setObjects(prevObjects => {
+      return prevObjects.map(obj => {
+        if (obj.id !== activeObjId) return obj;
+        
+        // Handle both value and function updates (standard useState behavior)
+        const nextPoints = typeof newPointsInput === 'function' 
+          ? newPointsInput(obj.points) 
+          : newPointsInput;
+          
+        return { ...obj, points: nextPoints };
+      });
+    });
+  }, [activeObjId]);
+
+  const activeObjectColor = useMemo(() => objects.find(o => o.id === activeObjId)?.color || '#ef4444', [objects, activeObjId]);
+
   const [videoSrc, setVideoSrc] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState(null);
@@ -72,6 +127,9 @@ export default function App() {
   // THEME STATE
   const [theme, setTheme] = useState('dark');
   const isDark = theme === 'dark';
+
+  // NEW: About Modal State
+  const [showAboutModal, setShowAboutModal] = useState(false);
 
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
 
@@ -150,12 +208,143 @@ export default function App() {
   const scrollContainerRef = useRef(null);
   const chartRef = useRef(null); 
   const animationFrameRef = useRef(null);
-  // NEW: Ref for video callback ID
+  // NEW: Ref for video callback ID (Phase 2)
   const videoCallbackRef = useRef(null);
+  const fileInputRef = useRef(null); // Ref for file input
+
+  // NEW: State to track if data was restored from persistence
+  const [hasRestoredData, setHasRestoredData] = useState(false);
 
   // --- GRAPH STATE ---
   const [plotX, setPlotX] = useState('time');
   const [plotY, setPlotY] = useState('x');
+
+  // --- 0. PERSISTENCE LOGIC (NEW) ---
+
+  // Auto-Load on Mount
+  useEffect(() => {
+    const savedData = localStorage.getItem('physTracker_autosave');
+    if (savedData) {
+        try {
+            const data = JSON.parse(savedData);
+            
+            // MIGRATION LOGIC: Handle old saves with single 'points'
+            if (data.objects) {
+                setObjects(data.objects);
+                if (data.activeObjId) setActiveObjId(data.activeObjId);
+            } else if (data.points) {
+                setObjects([
+                    { id: 'A', name: 'Object A', color: '#ef4444', points: data.points },
+                    { id: 'B', name: 'Object B', color: '#3b82f6', points: [] }
+                ]);
+            }
+
+            // Flag if we have ANY data
+            const hasData = (data.objects && data.objects.some(o => o.points.length > 0)) || (data.points && data.points.length > 0);
+            if (hasData) {
+                setHasRestoredData(true);
+            }
+
+            if (data.calibrationPoints) setCalibrationPoints(data.calibrationPoints);
+            if (data.pixelsPerMeter) setPixelsPerMeter(data.pixelsPerMeter);
+            if (data.origin) setOrigin(data.origin);
+            if (data.originAngle) setOriginAngle(data.originAngle);
+            if (data.zeroTime !== undefined) setZeroTime(data.zeroTime);
+            if (data.fitModel) setFitModel(data.fitModel);
+            if (data.uncertaintyPx) setUncertaintyPx(data.uncertaintyPx);
+            if (data.viewMode) setViewMode(data.viewMode);
+        } catch (e) {
+            console.error("Failed to restore autosave", e);
+        }
+    }
+  }, []);
+
+  // Auto-Save on Change
+  useEffect(() => {
+    const stateToSave = {
+        objects, // Saving full objects array
+        activeObjId,
+        calibrationPoints,
+        pixelsPerMeter,
+        origin,
+        originAngle,
+        zeroTime,
+        fitModel,
+        uncertaintyPx,
+        viewMode
+    };
+    localStorage.setItem('physTracker_autosave', JSON.stringify(stateToSave));
+  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode]);
+
+  const saveProject = () => {
+    const stateToSave = {
+        meta: { version: "1.0.0", date: new Date().toISOString() }, // Version 1.0.0
+        objects,
+        activeObjId,
+        calibrationPoints,
+        pixelsPerMeter,
+        origin,
+        originAngle,
+        zeroTime,
+        fitModel,
+        uncertaintyPx
+    };
+    const blob = new Blob([JSON.stringify(stateToSave, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `phys_tracker_project_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const loadProject = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const data = JSON.parse(event.target.result);
+              
+              // MIGRATION LOGIC
+              if (data.objects) {
+                  setObjects(data.objects);
+                  setActiveObjId(data.activeObjId || 'A');
+              } else {
+                  setObjects([
+                    { id: 'A', name: 'Object A', color: '#ef4444', points: data.points || [] },
+                    { id: 'B', name: 'Object B', color: '#3b82f6', points: [] }
+                  ]);
+                  setActiveObjId('A');
+              }
+
+              setCalibrationPoints(data.calibrationPoints || []);
+              setPixelsPerMeter(data.pixelsPerMeter || null);
+              setOrigin(data.origin || null);
+              setOriginAngle(data.originAngle || 0);
+              setZeroTime(data.zeroTime !== undefined ? data.zeroTime : true);
+              setFitModel(data.fitModel || 'none');
+              setUncertaintyPx(data.uncertaintyPx || 10);
+              setHasRestoredData(true);
+              setVideoSrc(null); 
+              alert("Project loaded successfully. Please upload the corresponding video file.");
+          } catch (err) {
+              alert("Invalid Project File");
+          }
+      };
+      reader.readAsText(file);
+      e.target.value = null; // Reset input
+  };
+
+  const clearProject = () => {
+      if (confirm("Are you sure? This will delete all data and reset the app.")) {
+          localStorage.removeItem('physTracker_autosave');
+          window.location.reload();
+      }
+  };
 
   // --- 1. HANDLING VIDEO UPLOAD ---
   const handleFileUpload = (event) => {
@@ -164,11 +353,26 @@ export default function App() {
       if (videoSrc) URL.revokeObjectURL(videoSrc);
       const url = URL.createObjectURL(file);
       setVideoSrc(url);
-      setPoints([]);
-      setCalibrationPoints([]);
-      setPixelsPerMeter(null);
-      setOrigin(null);
-      setOriginAngle(0);
+      
+      // SMART WIPE LOGIC:
+      // If we have points but NO video loaded (restored state), DO NOT WIPE.
+      if (!hasRestoredData) {
+          // Reset both objects
+          setObjects([
+            { id: 'A', name: 'Object A', color: '#ef4444', points: [] },
+            { id: 'B', name: 'Object B', color: '#3b82f6', points: [] }
+          ]);
+          setCalibrationPoints([]);
+          setPixelsPerMeter(null);
+          setOrigin(null);
+          setOriginAngle(0);
+          setFitModel('none');
+          setVideoDims({ w: 0, h: 0 });
+      } else {
+          // We just attached a video to restored data. Turn off the flag so next upload wipes it.
+          setHasRestoredData(false);
+      }
+
       setIsPlaying(false);
       setError(null);
       setShowInputModal(false);
@@ -178,13 +382,11 @@ export default function App() {
       setZeroTime(true); 
       setIsTracking(false);
       setReticlePos(null); // Reset reticle
-      setVideoDims({ w: 0, h: 0 });
       setUncertaintyPx(10);
       setDuration(0);
       setCurrentTime(0);
-      setFitModel('none');
       setViewMode('tracker');
-    }
+  }
   };
 
   useEffect(() => {
@@ -206,7 +408,9 @@ export default function App() {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     
-    if (!canvas || !video || videoDims.w === 0) return;
+    // Allow rendering if we have valid dimensions, even if video isn't ready (for restored data)
+    if (!canvas || (!video && !hasRestoredData)) return;
+    if (videoDims.w === 0 && !hasRestoredData) return;
 
     const ctx = canvas.getContext('2d');
     
@@ -215,9 +419,15 @@ export default function App() {
     ctx.clearRect(0, 0, videoDims.w, videoDims.h);
 
     // 1. DRAW VIDEO FRAME
-    // Only draw if we have valid dimensions
-    if (video.readyState >= 2) {
+    if (video && video.readyState >= 2) {
         ctx.drawImage(video, 0, 0, videoDims.w, videoDims.h);
+    } else if (hasRestoredData) {
+         // Placeholder background if we have points but no video
+         ctx.fillStyle = '#1e293b';
+         ctx.fillRect(0, 0, videoDims.w || 800, videoDims.h || 600); // Default size if unknown
+         ctx.fillStyle = '#64748b';
+         ctx.font = '20px sans-serif';
+         ctx.fillText("Data Loaded. Please Upload Video.", 50, 50);
     }
 
     const lw = (w) => w / zoom; 
@@ -229,15 +439,15 @@ export default function App() {
       
       ctx.beginPath();
       ctx.arc(x, y, uncertaintyPx, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(255, 0, 0, 0.15)'; 
+      ctx.fillStyle = `${activeObjectColor}26`; // Hex alpha ~15%
       ctx.fill();
       ctx.lineWidth = lw(1);
-      ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
+      ctx.strokeStyle = `${activeObjectColor}4D`; // Hex alpha ~30%
       ctx.stroke();
 
       ctx.beginPath();
       ctx.arc(x, y, lw(5), 0, 2 * Math.PI); 
-      ctx.fillStyle = '#ef4444'; 
+      ctx.fillStyle = activeObjectColor; 
       ctx.fill();
       ctx.lineWidth = lw(2);
       ctx.strokeStyle = 'white'; 
@@ -353,6 +563,7 @@ export default function App() {
       });
     }
 
+    // DRAW POINTS (Using the derived 'points' array, effectively showing only active object)
     points.forEach((point, index) => {
       const isDraggingThis = dragState === 'point' && draggedPointIndex === index;
       drawPointMarker(point.x, point.y, isDraggingThis, index + 1);
@@ -363,7 +574,7 @@ export default function App() {
         drawReticle(reticlePos.x, reticlePos.y, dragState === 'reticle' || dragState === 'reticle_move_jump');
     }
 
-  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking]);
+  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor]);
 
   // --- 3. TRIGGER RENDER LOOP (UPDATED: FRAME SYNC) ---
   useEffect(() => {
@@ -906,7 +1117,7 @@ export default function App() {
     const csvContent = headers.join(",") + "\n" + rows.join("\n") + "\n" + vHeaders.join(",") + "\n" + vRows.join("\n");
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csvContent));
-    link.setAttribute("download", "motion_data.csv");
+    link.setAttribute("download", `motion_data_${activeObjId}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -970,9 +1181,9 @@ export default function App() {
     
     const symbols = svgClone.querySelectorAll(".recharts-scatter-symbol path");
     symbols.forEach(s => { 
-      s.setAttribute("fill", "blue"); 
-      s.style.fill = "blue"; 
-      s.setAttribute("stroke", "blue");
+      s.setAttribute("fill", activeObjectColor); 
+      s.style.fill = activeObjectColor; 
+      s.setAttribute("stroke", activeObjectColor);
       s.setAttribute("stroke-width", "5"); 
     });
 
@@ -1088,7 +1299,7 @@ export default function App() {
 
             ctx.beginPath();
             ctx.arc(boxX + 25, boxY + 30, 6, 0, 2 * Math.PI); 
-            ctx.fillStyle = "blue";
+            ctx.fillStyle = activeObjectColor;
             ctx.fill();
             ctx.fillStyle = "black";
             const dataLabel = isVelocity ? "Calculated Velocity Data" : (isPosition ? "Experimental Position Data" : "Data Points");
@@ -1119,7 +1330,7 @@ export default function App() {
         const pngUrl = canvas.toDataURL("image/png");
         const downloadLink = document.createElement("a");
         downloadLink.href = pngUrl;
-        downloadLink.download = "scientific_graph.png";
+        downloadLink.download = `scientific_graph_${activeObjId}.png`;
         document.body.appendChild(downloadLink);
         downloadLink.click();
         document.body.removeChild(downloadLink);
@@ -1152,9 +1363,43 @@ export default function App() {
             <button onClick={() => setViewMode('tracker')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'tracker' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white shadow-sm text-slate-900') : styles.textSecondary + ' hover:' + styles.text}`}>Tracker</button>
             <button onClick={() => setViewMode('analysis')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'analysis' ? (isDark ? 'bg-slate-700 text-blue-400' : 'bg-white shadow-sm text-blue-600') : styles.textSecondary + ' hover:' + styles.text}`}>Analysis</button>
           </div>
+          
+          {/* NEW: Object Switcher */}
+          <div className={`flex rounded p-1 border ml-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+              <button onClick={() => setActiveObjId('A')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'A' ? 'bg-red-500 text-white shadow-sm' : styles.textSecondary}`}>
+                  <Users size={14}/> Object A
+              </button>
+              <button onClick={() => setActiveObjId('B')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'B' ? 'bg-blue-500 text-white shadow-sm' : styles.textSecondary}`}>
+                  <Users size={14}/> Object B
+              </button>
+          </div>
+
+          {/* NEW: FILE CONTROLS */}
+          <div className="flex items-center gap-2 border-l pl-4 ml-2 border-slate-600">
+             <button onClick={saveProject} className={`p-2 rounded transition ${styles.buttonSecondary}`} title="Save Project to File">
+                <Save size={18} />
+             </button>
+             <label className={`p-2 rounded cursor-pointer transition ${styles.buttonSecondary}`} title="Load Project from File">
+                <FolderOpen size={18} />
+                <input type="file" ref={fileInputRef} onChange={loadProject} accept=".json" className="hidden" />
+             </label>
+             <button onClick={clearProject} className={`p-2 rounded transition hover:text-red-400 ${styles.buttonSecondary}`} title="Reset / Clear Data">
+                <RefreshCw size={18} />
+             </button>
+             {hasRestoredData && !videoSrc && (
+                 <span className="text-xs text-orange-400 animate-pulse font-semibold ml-2 flex items-center gap-1">
+                     <AlertCircle size={12} /> Waiting for Video
+                 </span>
+             )}
+          </div>
         </div>
+        
         <div className="flex gap-4">
           
+          <button onClick={() => setShowAboutModal(true)} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title="About PhysTracker">
+            <Info size={20} />
+          </button>
+
           <button onClick={toggleTheme} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
             {isDark ? <Sun size={20} /> : <Moon size={20} />}
           </button>
@@ -1177,7 +1422,7 @@ export default function App() {
             <div className={`flex-1 flex flex-col min-w-0 ${styles.bg}`}>
               <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start justify-center p-4 relative ${styles.workspaceBg}`}>
                 {/* REMOVED OLD SVG RETICLE */}
-                {dragState === 'point' && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="13" cy="13" r="4" fill="#ef4444" stroke="white" strokeWidth="1.5" /> </svg> </div> )}
+                {dragState === 'point' && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="13" cy="13" r="4" fill={activeObjectColor} stroke="white" strokeWidth="1.5" /> </svg> </div> )}
                 {dragState === 'calibration' && ( <div className="fixed z-[100] w-12 h-12 rounded-full border-4 border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.8)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center" style={{ left: mousePos.x, top: mousePos.y }}> <div className="w-1.5 h-1.5 bg-green-400 rounded-full" /> </div> )}
                 <div ref={trashRef} className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}> <Trash2 size={32} /> <span className="text-xs font-bold mt-2"> Drop to Delete </span> </div>
                 {showInputModal && ( 
@@ -1206,7 +1451,7 @@ export default function App() {
             </div>
 
             <div className={`w-96 border-l flex flex-col transition-all z-20 shrink-0 ${styles.panel}`}>
-              <div className={`p-4 border-b flex justify-between items-center ${styles.panelHeader} ${styles.panelBorder}`}> <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}><Table size={16} /> Data Table</h2> </div>
+              <div className={`p-4 border-b flex justify-between items-center ${styles.panelHeader} ${styles.panelBorder}`}> <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}><Table size={16} /> Data Table ({activeObjId})</h2> </div>
               <div className={`p-4 border-b flex flex-col gap-4 ${styles.panelBgOnly} ${styles.panelBorder}`}> 
                 <div className="flex flex-col gap-1"> 
                   <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>Origin: {origin ? `(${Math.round(origin.x)}, ${Math.round(origin.y)})` : "Not Set"}</span> </div> 
@@ -1230,7 +1475,7 @@ export default function App() {
                           {positionData.map((p, i) => (
                             <tr key={i} className={`transition ${styles.tableRow}`}> <td className={`p-3 ${styles.textSecondary}`}>{i + 1}</td> <td className="p-3 font-mono text-blue-500">{p.time.toFixed(3)}</td> <td className={`p-3 font-mono ${styles.tableCell}`}>{p.x.toFixed(3)}</td> <td className={`p-3 font-mono ${styles.tableCell}`}>{p.y.toFixed(3)}</td> </tr>
                           ))}
-                          {points.length === 0 && ( <tr><td colSpan="4" className={`p-8 text-center ${styles.textSecondary}`}>No data points yet</td></tr> )}
+                          {points.length === 0 && ( <tr><td colSpan="4" className={`p-8 text-center ${styles.textSecondary}`}>No data points yet for Object {activeObjId}</td></tr> )}
                         </tbody>
                       </table>
                     </div>
@@ -1282,7 +1527,7 @@ export default function App() {
                           label={{ value: labels[plotY], angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 18 }} 
                         /> 
                         <Tooltip contentStyle={styles.chartTooltip} formatter={(val) => (typeof val === 'number') ? val.toFixed(3) : val} labelFormatter={(val) => `${labels[plotX]}: ${val}`} /> 
-                        <Scatter name="Data Points" dataKey={plotY} fill="#3b82f6" />
+                        <Scatter name={`Data Points (${activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
                         {fitEquation && <Line type="monotone" dataKey="fitY" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={false} />}
                         {['x', 'y'].includes(plotY) && ( <Scatter dataKey={plotY} fill="none" stroke="none"> <ErrorBar dataKey="error" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" /> </Scatter> )}
                       </ComposedChart> 
@@ -1294,7 +1539,7 @@ export default function App() {
 
             <div className={`w-80 border-l flex flex-col p-6 gap-6 shrink-0 ${styles.panel}`}>
                <div>
-                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> Curve Fitting</h3>
+                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> Curve Fitting ({activeObjId})</h3>
                  <div className="flex flex-col gap-2">
                     <label className={`text-sm ${styles.textSecondary}`}>Model Type</label>
                     <select value={fitModel} onChange={(e) => setFitModel(e.target.value)} className={`border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${styles.input}`}>
@@ -1368,6 +1613,49 @@ export default function App() {
           </div>
         )}
       </div>
+
+       {/* --- ABOUT MODAL --- */}
+      {showAboutModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowAboutModal(false)}>
+            <div className={`p-8 rounded-2xl shadow-2xl max-w-md w-full relative transform transition-all scale-100 ${styles.panel}`} onClick={e => e.stopPropagation()}>
+            <button onClick={() => setShowAboutModal(false)} className={`absolute top-4 right-4 p-1 rounded-full hover:bg-black/10 transition ${styles.textSecondary}`}>
+                <X size={20} />
+            </button>
+            
+            <h2 className="text-3xl font-bold mb-2 flex items-center gap-3 text-blue-500">
+                <Activity size={32} strokeWidth={2.5} /> PhysTracker
+            </h2>
+            
+            <div className={`space-y-6 ${styles.text}`}>
+                <p className="text-lg font-medium opacity-90 leading-relaxed">
+                    A professional-grade, open-source video analysis tool designed for physics education.
+                </p>
+                
+                <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="grid grid-cols-[80px_1fr] gap-y-2 text-sm items-center">
+                        <span className="opacity-60 font-semibold">Version</span>
+                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.0</span>
+                        
+                        <span className="opacity-60 font-semibold">Author</span>
+                        <span>Cesar Cortes</span>
+                        
+                        <span className="opacity-60 font-semibold">Engine</span>
+                        <span className="flex items-center gap-1">Gemini Pro AI ✨</span>
+                        
+                        <span className="opacity-60 font-semibold">License</span>
+                        <span>MIT Open Source</span>
+                    </div>
+                </div>
+
+                <div className="text-xs opacity-50 text-center pt-4 border-t border-slate-700/30 leading-relaxed">
+                    Copyright © 2026 Cesar Cortes. All rights reserved.<br/>
+                    Licensed under the MIT License.
+                </div>
+            </div>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }
