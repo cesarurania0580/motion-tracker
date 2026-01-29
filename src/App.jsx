@@ -23,8 +23,191 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X } from 'lucide-react';
+import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X, Languages } from 'lucide-react';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
+
+// --- HELPER: FORMAT TICKS DYNAMICALLY ---
+const getTickFormatter = (step) => {
+  if (!step || step === 0 || !isFinite(step)) return (val) => val;
+  
+  // Handle integers
+  if (step >= 1 && step % 1 === 0) return (val) => Number(val).toFixed(0);
+
+  // Handle decimals: clean potential float errors (e.g. 0.3000000004)
+  const cleanStep = parseFloat(step.toFixed(10)); 
+  const s = cleanStep.toString();
+  const decimals = s.indexOf('.') > -1 ? s.split('.')[1].length : 0;
+  
+  return (val) => Number(val).toFixed(decimals);
+};
+
+// --- TRANSLATIONS DICTIONARY ---
+const TRANSLATIONS = {
+  en: {
+    appTitle: "PhysTracker",
+    trackerMode: "Tracker",
+    analysisMode: "Analysis",
+    saveProject: "Save Project",
+    loadProject: "Load Project",
+    resetData: "Reset / Clear Data",
+    waitingVideo: "Waiting for Video",
+    startTracking: "Start Tracking",
+    stopTracking: "Stop Tracking",
+    setOrigin: "Set Origin",
+    moveOrigin: "Move Origin",
+    setScale: "Set Scale",
+    hideScale: "Hide Scale",
+    showScale: "Show Scale",
+    enterDistance: "Enter Distance",
+    uploadVideo: "Upload Video",
+    dropToDelete: "Drop to Delete",
+    setRealDistance: "Set Real Distance",
+    cancel: "Cancel",
+    save: "Save",
+    uploadPrompt: "Upload a video to begin analysis",
+    undoLast: "Undo Last Point",
+    prevFrame: "Previous Frame",
+    nextFrame: "Next Frame",
+    playPause: "Play/Pause",
+    zoomOut: "Zoom Out",
+    zoomIn: "Zoom In",
+    resetView: "Reset View",
+    dataTable: "Data Table",
+    originLabel: "Origin",
+    scaleLabel: "Scale",
+    notSet: "Not Set",
+    timeStart: "t=0 at Start",
+    videoTime: "Video Time",
+    blurSize: "Blur Size / Uncertainty",
+    clearData: "Clear Data",
+    downloadCSV: "Download CSV",
+    noData: "No data points yet for Object",
+    yAxis: "Y-Axis",
+    xAxis: "X-Axis",
+    curveFitting: "Curve Fitting",
+    modelType: "Model Type",
+    none: "None",
+    linear: "Linear (mx + b)",
+    quadratic: "Quadratic (Ax² + Bx + C)",
+    slope: "Slope (m)",
+    intercept: "Intercept (b)",
+    aTerm: "A term",
+    bTerm: "B term",
+    cTerm: "C term",
+    legendPos: "Legend Position (Export)",
+    topLeft: "Top Left",
+    topRight: "Top Right",
+    bottomLeft: "Bottom Left",
+    bottomRight: "Bottom Right",
+    hide: "None (Hide)",
+    exportGraph: "Export Graph (PNG)",
+    exportData: "Export Data (CSV)",
+    objectA: "Object A",
+    objectB: "Object B",
+    about: "About PhysTracker",
+    switchTheme: "Switch Theme",
+    version: "Version",
+    author: "Author",
+    engine: "Engine",
+    license: "License",
+    rights: "All rights reserved.",
+    licensedUnder: "Licensed under the MIT License.",
+    aboutDesc: "A professional-grade, open-source video analysis tool designed for physics education.",
+    tapToFire: "TAP TO FIRE",
+    // Graph Labels
+    xPos: "X Position (m)",
+    yPos: "Y Position (m)",
+    xVel: "X Velocity (m/s)",
+    yVel: "Y Velocity (m/s)",
+    time: "Time (s)",
+    dataPoints: "Data Points",
+    trendLine: "Trend Line",
+    calcVel: "Calculated Velocity Data",
+    expPos: "Experimental Position Data"
+  },
+  es: {
+    appTitle: "PhysTracker",
+    trackerMode: "Rastreador",
+    analysisMode: "Análisis",
+    saveProject: "Guardar Proyecto",
+    loadProject: "Cargar Proyecto",
+    resetData: "Reiniciar / Borrar Datos",
+    waitingVideo: "Esperando Video",
+    startTracking: "Iniciar Rastreo",
+    stopTracking: "Detener Rastreo",
+    setOrigin: "Fijar Origen",
+    moveOrigin: "Mover Origen",
+    setScale: "Fijar Escala",
+    hideScale: "Ocultar Escala",
+    showScale: "Mostrar Escala",
+    enterDistance: "Ingresar Distancia",
+    uploadVideo: "Subir Video",
+    dropToDelete: "Soltar para Borrar",
+    setRealDistance: "Fijar Distancia Real",
+    cancel: "Cancelar",
+    save: "Guardar",
+    uploadPrompt: "Sube un video para comenzar el análisis",
+    undoLast: "Deshacer Último Punto",
+    prevFrame: "Cuadro Anterior",
+    nextFrame: "Siguiente Cuadro",
+    playPause: "Reproducir/Pausar",
+    zoomOut: "Alejar",
+    zoomIn: "Acercar",
+    resetView: "Vista Original",
+    dataTable: "Tabla de Datos",
+    originLabel: "Origen",
+    scaleLabel: "Escala",
+    notSet: "No Definido",
+    timeStart: "t=0 al Inicio",
+    videoTime: "Tiempo del Video",
+    blurSize: "Tamaño de Desenfoque / Incertidumbre",
+    clearData: "Borrar Datos",
+    downloadCSV: "Descargar CSV",
+    noData: "Aún no hay datos para el Objeto",
+    yAxis: "Eje Y",
+    xAxis: "Eje X",
+    curveFitting: "Ajuste de Curva",
+    modelType: "Tipo de Modelo",
+    none: "Ninguno",
+    linear: "Lineal (mx + b)",
+    quadratic: "Cuadrática (Ax² + Bx + C)",
+    slope: "Pendiente (m)",
+    intercept: "Intersección (b)",
+    aTerm: "Término A",
+    bTerm: "Término B",
+    cTerm: "Término C",
+    legendPos: "Posición de Leyenda (Exportar)",
+    topLeft: "Arriba Izquierda",
+    topRight: "Arriba Derecha",
+    bottomLeft: "Abajo Izquierda",
+    bottomRight: "Abajo Derecha",
+    hide: "Ninguna (Ocultar)",
+    exportGraph: "Exportar Gráfico (PNG)",
+    exportData: "Exportar Datos (CSV)",
+    objectA: "Objeto A",
+    objectB: "Objeto B",
+    about: "Acerca de PhysTracker",
+    switchTheme: "Cambiar Tema",
+    version: "Versión",
+    author: "Autor",
+    engine: "Motor",
+    license: "Licencia",
+    rights: "Todos los derechos reservados.",
+    licensedUnder: "Licenciado bajo la Licencia MIT.",
+    aboutDesc: "Una herramienta de análisis de video de código abierto y nivel profesional diseñada para la educación en física.",
+    tapToFire: "TOCA PARA MARCAR",
+    // Graph Labels
+    xPos: "Posición X (m)",
+    yPos: "Posición Y (m)",
+    xVel: "Velocidad X (m/s)",
+    yVel: "Velocidad Y (m/s)",
+    time: "Tiempo (s)",
+    dataPoints: "Puntos de Datos",
+    trendLine: "Línea de Tendencia",
+    calcVel: "Datos de Velocidad Calculados",
+    expPos: "Datos de Posición Experimentales"
+  }
+};
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
 // Memoized to prevent layout thrashing. 
@@ -49,12 +232,13 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
 });
 
 // --- MATH HELPER: NICE NUMBERS ALGORITHM ---
-const calculateNiceScale = (minValue, maxValue) => {
-  if (!isFinite(minValue) || !isFinite(maxValue) || minValue === maxValue) return { min: 0, max: 10, ticks: [0, 10] };
+const calculateNiceScale = (minValue, maxValue, lockZero = false) => {
+  if (!isFinite(minValue) || !isFinite(maxValue) || minValue === maxValue) return { min: 0, max: 10, ticks: [0, 10], step: 1 };
 
   const range = maxValue - minValue;
   const padding = range === 0 ? 1 : range * 0.05;
-  const paddedMin = minValue - padding;
+  // MODIFIED: If lockZero is true and we have positive data, force start at 0
+  const paddedMin = (lockZero && minValue >= 0) ? 0 : minValue - padding;
   const paddedMax = maxValue + padding;
   const paddedRange = paddedMax - paddedMin;
 
@@ -79,7 +263,7 @@ const calculateNiceScale = (minValue, maxValue) => {
     ticks.push(parseFloat(t.toFixed(4))); 
   }
 
-  return { min: niceMin, max: niceMax, ticks };
+  return { min: niceMin, max: niceMax, ticks, step: niceStep };
 };
 
 // --- HELPER: VIDEO FRAME CONSTANTS ---
@@ -89,6 +273,10 @@ const FRAME_DURATION = 1 / FPS;
 export default function App() {
   // --- STATE MANAGEMENT ---
   
+  // NEW: Language State
+  const [language, setLanguage] = useState('en');
+  const t = TRANSLATIONS[language]; // Helper for current translations
+
   // NEW: Multi-Object State
   const [objects, setObjects] = useState([
     { id: 'A', name: 'Object A', color: '#ef4444', points: [] }, // Red
@@ -132,6 +320,7 @@ export default function App() {
   const [showAboutModal, setShowAboutModal] = useState(false);
 
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
+  const toggleLanguage = () => setLanguage(l => l === 'en' ? 'es' : 'en');
 
   // --- THEME CONFIGURATION ---
   const styles = {
@@ -253,6 +442,7 @@ export default function App() {
             if (data.fitModel) setFitModel(data.fitModel);
             if (data.uncertaintyPx) setUncertaintyPx(data.uncertaintyPx);
             if (data.viewMode) setViewMode(data.viewMode);
+            if (data.language) setLanguage(data.language); // Restore Language
         } catch (e) {
             console.error("Failed to restore autosave", e);
         }
@@ -271,10 +461,11 @@ export default function App() {
         zeroTime,
         fitModel,
         uncertaintyPx,
-        viewMode
+        viewMode,
+        language
     };
     localStorage.setItem('physTracker_autosave', JSON.stringify(stateToSave));
-  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode]);
+  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode, language]);
 
   const saveProject = () => {
     const stateToSave = {
@@ -287,7 +478,8 @@ export default function App() {
         originAngle,
         zeroTime,
         fitModel,
-        uncertaintyPx
+        uncertaintyPx,
+        language
     };
     const blob = new Blob([JSON.stringify(stateToSave, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -330,6 +522,8 @@ export default function App() {
               setUncertaintyPx(data.uncertaintyPx || 10);
               setHasRestoredData(true);
               setVideoSrc(null); 
+              if (data.language) setLanguage(data.language);
+              
               alert("Project loaded successfully. Please upload the corresponding video file.");
           } catch (err) {
               alert("Invalid Project File");
@@ -516,35 +710,76 @@ export default function App() {
         if (!isDragging) {
             ctx.fillStyle = '#4ade80';
             ctx.font = `bold ${lw(14)}px sans-serif`; // Bigger font
-            ctx.fillText("TAP TO FIRE", x + lw(35), y - lw(35));
+            ctx.fillText(t.tapToFire, x + lw(35), y - lw(35));
         }
         
         ctx.restore();
     };
 
+    // UPDATED: Professional Red Axes Design
     if (origin) {
       ctx.save(); 
       ctx.translate(origin.x, origin.y);
       ctx.rotate(originAngle);
       const length = Math.max(videoDims.w, videoDims.h) * 2;
       
+      const axisColor = '#FF4444'; // Vibrant Red
+      const axisWidth = lw(2);
+
       ctx.beginPath();
-      ctx.strokeStyle = '#3b82f6'; 
-      ctx.lineWidth = lw(2.5); 
-      ctx.moveTo(-length, 0); ctx.lineTo(length, 0);
-      ctx.moveTo(0, -length); ctx.lineTo(0, length);
+      ctx.strokeStyle = axisColor; 
+      ctx.lineWidth = axisWidth; 
+      
+      // Draw Axes Lines
+      ctx.moveTo(-length, 0); ctx.lineTo(length, 0); // X-Axis
+      ctx.moveTo(0, length); ctx.lineTo(0, -length); // Y-Axis
       ctx.stroke();
       
-      ctx.beginPath(); ctx.arc(0, 0, lw(7), 0, 2 * Math.PI); 
-      ctx.fillStyle = '#3b82f6'; ctx.fill(); 
+      // Draw Arrowheads
+      const arrowSize = lw(12);
+      ctx.fillStyle = axisColor;
       
+      // X Arrow (Right)
+      ctx.beginPath();
+      ctx.moveTo(length, 0);
+      ctx.lineTo(length - arrowSize, -arrowSize/2);
+      ctx.lineTo(length - arrowSize, arrowSize/2);
+      ctx.fill();
+
+      // Y Arrow (Up - remember canvas Y is down, so Up is negative length)
+      ctx.beginPath();
+      ctx.moveTo(0, -length);
+      ctx.lineTo(-arrowSize/2, -length + arrowSize);
+      ctx.lineTo(arrowSize/2, -length + arrowSize);
+      ctx.fill();
+      
+      // Draw Origin "Bullseye"
+      ctx.beginPath();
+      ctx.strokeStyle = axisColor;
+      ctx.lineWidth = lw(2);
+      ctx.arc(0, 0, lw(10), 0, 2 * Math.PI); // Outer Ring
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.fillStyle = axisColor;
+      ctx.arc(0, 0, lw(3), 0, 2 * Math.PI); // Center Dot
+      ctx.fill();
+      
+      // Rotation Handle
       const handleDist = lw(100); 
-      ctx.beginPath(); ctx.arc(handleDist, 0, lw(6), 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.2)'; ctx.strokeStyle = '#3b82f6'; ctx.fill(); ctx.stroke();
+      ctx.beginPath(); 
+      ctx.arc(handleDist, 0, lw(6), 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(255, 68, 68, 0.2)'; 
+      ctx.strokeStyle = axisColor; 
+      ctx.fill(); 
+      ctx.stroke();
       
-      ctx.fillStyle = '#3b82f6'; ctx.font = `bold ${lw(12)}px Arial`;
-      ctx.fillText("+X", length - lw(20), -lw(5)); 
-      ctx.fillText("+Y", lw(5), -length + lw(20)); 
+      // Labels
+      ctx.fillStyle = axisColor; 
+      ctx.font = `bold ${lw(14)}px sans-serif`;
+      ctx.fillText("+X", length - lw(30), -lw(8)); 
+      ctx.fillText("+Y", lw(8), -length + lw(30)); 
+      
       ctx.restore(); 
     }
 
@@ -574,7 +809,7 @@ export default function App() {
         drawReticle(reticlePos.x, reticlePos.y, dragState === 'reticle' || dragState === 'reticle_move_jump');
     }
 
-  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor]);
+  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor, t]);
 
   // --- 3. TRIGGER RENDER LOOP (UPDATED: FRAME SYNC) ---
   useEffect(() => {
@@ -1014,13 +1249,14 @@ export default function App() {
 
   // --- SCALE CALCULATION ---
   const xScale = useMemo(() => {
-    if (activeData.length === 0) return { min: 0, max: 10, ticks: [] };
+    if (activeData.length === 0) return { min: 0, max: 10, ticks: [], step: 1 };
     const vals = activeData.map(d => d[plotX]).filter(v => isFinite(v));
-    return calculateNiceScale(Math.min(...vals), Math.max(...vals));
+    // MODIFIED: Pass true for lockZero if plotX is 'time'
+    return calculateNiceScale(Math.min(...vals), Math.max(...vals), plotX === 'time');
   }, [activeData, plotX]);
 
   const yScale = useMemo(() => {
-    if (activeData.length === 0) return { min: 0, max: 10, ticks: [] };
+    if (activeData.length === 0) return { min: 0, max: 10, ticks: [], step: 1 };
     const vals = activeData.map(d => d[plotY]).filter(v => isFinite(v));
     return calculateNiceScale(Math.min(...vals), Math.max(...vals));
   }, [activeData, plotY]);
@@ -1107,7 +1343,13 @@ export default function App() {
     }));
   }, [activeData, fitEquation, plotX]);
 
-  const labels = { 'time': 'Time (s)', 'x': 'X Position (m)', 'y': 'Y Position (m)', 'vx': 'Velocity (m/s)', 'vy': 'Velocity (m/s)' };
+  const labels = { 
+    'time': t.time, 
+    'x': t.xPos, 
+    'y': t.yPos, 
+    'vx': t.xVel, 
+    'vy': t.yVel 
+  };
 
   const downloadCSV = () => {
     const headers = ["Time (s)", "X (m)", "Y (m)", "Uncertainty (m)"];
@@ -1302,10 +1544,10 @@ export default function App() {
             ctx.fillStyle = activeObjectColor;
             ctx.fill();
             ctx.fillStyle = "black";
-            const dataLabel = isVelocity ? "Calculated Velocity Data" : (isPosition ? "Experimental Position Data" : "Data Points");
+            const dataLabel = isVelocity ? t.calcVel : (isPosition ? t.expPos : t.dataPoints);
             ctx.fillText(dataLabel, boxX + 50, boxY + 35);
 
-            ctx.fillText("Trend Line", boxX + 50, boxY + 65);
+            ctx.fillText(t.trendLine, boxX + 50, boxY + 65);
 
             ctx.beginPath();
             ctx.moveTo(boxX + 15, boxY + 95);
@@ -1358,37 +1600,37 @@ export default function App() {
       {/* HEADER WITH VIEW SWITCHER */}
       <div className={`p-4 border-b flex justify-between items-center shrink-0 h-16 ${styles.panel}`}>
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-blue-400">PhysTracker</h1>
+          <h1 className="text-xl font-bold text-blue-400">{t.appTitle}</h1>
           <div className={`flex rounded p-1 border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
-            <button onClick={() => setViewMode('tracker')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'tracker' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white shadow-sm text-slate-900') : styles.textSecondary + ' hover:' + styles.text}`}>Tracker</button>
-            <button onClick={() => setViewMode('analysis')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'analysis' ? (isDark ? 'bg-slate-700 text-blue-400' : 'bg-white shadow-sm text-blue-600') : styles.textSecondary + ' hover:' + styles.text}`}>Analysis</button>
+            <button onClick={() => setViewMode('tracker')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'tracker' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white shadow-sm text-slate-900') : styles.textSecondary + ' hover:' + styles.text}`}>{t.trackerMode}</button>
+            <button onClick={() => setViewMode('analysis')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'analysis' ? (isDark ? 'bg-slate-700 text-blue-400' : 'bg-white shadow-sm text-blue-600') : styles.textSecondary + ' hover:' + styles.text}`}>{t.analysisMode}</button>
           </div>
           
           {/* NEW: Object Switcher */}
           <div className={`flex rounded p-1 border ml-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
               <button onClick={() => setActiveObjId('A')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'A' ? 'bg-red-500 text-white shadow-sm' : styles.textSecondary}`}>
-                  <Users size={14}/> Object A
+                  <Users size={14}/> {t.objectA}
               </button>
               <button onClick={() => setActiveObjId('B')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'B' ? 'bg-blue-500 text-white shadow-sm' : styles.textSecondary}`}>
-                  <Users size={14}/> Object B
+                  <Users size={14}/> {t.objectB}
               </button>
           </div>
 
           {/* NEW: FILE CONTROLS */}
           <div className="flex items-center gap-2 border-l pl-4 ml-2 border-slate-600">
-             <button onClick={saveProject} className={`p-2 rounded transition ${styles.buttonSecondary}`} title="Save Project to File">
+             <button onClick={saveProject} className={`p-2 rounded transition ${styles.buttonSecondary}`} title={t.saveProject}>
                 <Save size={18} />
              </button>
-             <label className={`p-2 rounded cursor-pointer transition ${styles.buttonSecondary}`} title="Load Project from File">
+             <label className={`p-2 rounded cursor-pointer transition ${styles.buttonSecondary}`} title={t.loadProject}>
                 <FolderOpen size={18} />
                 <input type="file" ref={fileInputRef} onChange={loadProject} accept=".json" className="hidden" />
              </label>
-             <button onClick={clearProject} className={`p-2 rounded transition hover:text-red-400 ${styles.buttonSecondary}`} title="Reset / Clear Data">
+             <button onClick={clearProject} className={`p-2 rounded transition hover:text-red-400 ${styles.buttonSecondary}`} title={t.resetData}>
                 <RefreshCw size={18} />
              </button>
              {hasRestoredData && !videoSrc && (
                  <span className="text-xs text-orange-400 animate-pulse font-semibold ml-2 flex items-center gap-1">
-                     <AlertCircle size={12} /> Waiting for Video
+                     <AlertCircle size={12} /> {t.waitingVideo}
                  </span>
              )}
           </div>
@@ -1396,19 +1638,23 @@ export default function App() {
         
         <div className="flex gap-4">
           
-          <button onClick={() => setShowAboutModal(true)} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title="About PhysTracker">
+          <button onClick={() => setShowAboutModal(true)} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title={t.about}>
             <Info size={20} />
           </button>
 
-          <button onClick={toggleTheme} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
+          <button onClick={toggleTheme} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title={t.switchTheme}>
             {isDark ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+
+          <button onClick={toggleLanguage} className={`p-2 rounded-full transition font-bold text-sm w-10 h-10 flex items-center justify-center ${styles.buttonSecondary}`} title="Switch Language">
+            {language === 'en' ? 'ES' : 'EN'}
           </button>
 
           {viewMode === 'tracker' && (
             <>
-              <button onClick={() => { setIsTracking(!isTracking); setIsSettingOrigin(false); setIsCalibrating(false); }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}> <Target size={18} /> <span>{isTracking ? "Stop Tracking" : "Start Tracking"}</span> </button>
-              <button onClick={() => { setIsSettingOrigin(true); setIsCalibrating(false); setIsTracking(false); setShowInputModal(false); }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isSettingOrigin ? 'bg-blue-600 text-white' : styles.buttonSecondary}`}> <Crosshair size={18} /> <span>{origin ? "Move Origin" : "Set Origin"}</span> </button>
-              <button onClick={handleScaleButtonClick} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isCalibrating ? 'bg-green-600 text-white' : pixelsPerMeter ? 'bg-green-100 text-green-700 border border-green-200' : styles.buttonSecondary}`}> {isCalibrating ? <CheckCircle2 size={18} /> : (pixelsPerMeter ? (isScaleVisible ? <Eye size={18} /> : <EyeOff size={18} />) : <Ruler size={18} />)} <span>{isCalibrating ? "Enter Distance" : pixelsPerMeter ? (isScaleVisible ? "Hide Scale" : "Show Scale") : "Set Scale"}</span> </button>
+              <button onClick={() => { setIsTracking(!isTracking); setIsSettingOrigin(false); setIsCalibrating(false); }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}> <Target size={18} /> <span>{isTracking ? t.stopTracking : t.startTracking}</span> </button>
+              <button onClick={() => { setIsSettingOrigin(true); setIsCalibrating(false); setIsTracking(false); setShowInputModal(false); }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isSettingOrigin ? 'bg-blue-600 text-white' : styles.buttonSecondary}`}> <Crosshair size={18} /> <span>{origin ? t.moveOrigin : t.setOrigin}</span> </button>
+              <button onClick={handleScaleButtonClick} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isCalibrating ? 'bg-green-600 text-white' : pixelsPerMeter ? 'bg-green-100 text-green-700 border border-green-200' : styles.buttonSecondary}`}> {isCalibrating ? <CheckCircle2 size={18} /> : (pixelsPerMeter ? (isScaleVisible ? <Eye size={18} /> : <EyeOff size={18} />) : <Ruler size={18} />)} <span>{isCalibrating ? t.enterDistance : pixelsPerMeter ? (isScaleVisible ? t.hideScale : t.showScale) : t.setScale}</span> </button>
             </>
           )}
           <label className={`flex items-center gap-2 px-4 py-2 rounded cursor-pointer transition ${styles.buttonSecondary}`}> <Upload size={18} /> <input type="file" accept="video/*" onChange={handleFileUpload} className="hidden" /> </label>
@@ -1424,12 +1670,12 @@ export default function App() {
                 {/* REMOVED OLD SVG RETICLE */}
                 {dragState === 'point' && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="13" cy="13" r="4" fill={activeObjectColor} stroke="white" strokeWidth="1.5" /> </svg> </div> )}
                 {dragState === 'calibration' && ( <div className="fixed z-[100] w-12 h-12 rounded-full border-4 border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.8)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center" style={{ left: mousePos.x, top: mousePos.y }}> <div className="w-1.5 h-1.5 bg-green-400 rounded-full" /> </div> )}
-                <div ref={trashRef} className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}> <Trash2 size={32} /> <span className="text-xs font-bold mt-2"> Drop to Delete </span> </div>
+                <div ref={trashRef} className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}> <Trash2 size={32} /> <span className="text-xs font-bold mt-2"> {t.dropToDelete} </span> </div>
                 {showInputModal && ( 
                   <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 border p-6 rounded-xl shadow-2xl z-50 w-80 text-center ${styles.panel}`}>
-                    <h3 className={`text-lg font-bold mb-4 ${styles.text}`}>Set Real Distance</h3>
+                    <h3 className={`text-lg font-bold mb-4 ${styles.text}`}>{t.setRealDistance}</h3>
                     <div className="flex items-center justify-center gap-2 mb-6"> <input type="number" value={realDistanceInput} onChange={(e) => setRealDistanceInput(e.target.value)} className={`rounded px-3 py-2 w-24 text-center focus:outline-none focus:border-blue-500 text-lg ${styles.input}`} autoFocus /> <span className={`font-semibold text-lg ${styles.textSecondary}`}>m</span> </div>
-                    <div className="flex gap-3 justify-center"> <button onClick={cancelCalibration} className={`px-4 py-2 rounded transition ${styles.buttonSecondary}`}>Cancel</button> <button onClick={submitCalibration} className="px-4 py-2 rounded bg-green-600 hover:bg-green-500 text-white font-semibold transition">Save</button> </div> 
+                    <div className="flex gap-3 justify-center"> <button onClick={cancelCalibration} className={`px-4 py-2 rounded transition ${styles.buttonSecondary}`}>{t.cancel}</button> <button onClick={submitCalibration} className="px-4 py-2 rounded bg-green-600 hover:bg-green-500 text-white font-semibold transition">{t.save}</button> </div> 
                   </div> 
                 )}
                 {videoSrc ? (
@@ -1440,29 +1686,33 @@ export default function App() {
                     {videoElement}
                     <canvas ref={canvasRef} width={Math.floor(videoDims.w * zoom)} height={Math.floor(videoDims.h * zoom)} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10, touchAction: 'none' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onMouseEnter={() => setIsHoveringCanvas(true)} onMouseLeave={() => setIsHoveringCanvas(false)} className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} />
                   </div>
-                ) : ( <div className={`text-center mt-20 ${styles.textSecondary}`}> <Upload size={48} className="mx-auto mb-4 opacity-50" /> <p>Upload a video to begin analysis</p> </div> )}
+                ) : ( <div className={`text-center mt-20 ${styles.textSecondary}`}> <Upload size={48} className="mx-auto mb-4 opacity-50" /> <p>{t.uploadPrompt}</p> </div> )}
               </div>
               <div className={`h-20 border-t flex items-center justify-center gap-8 px-6 shrink-0 z-30 ${styles.panel}`}>
-                 <button onClick={undoLastPoint} disabled={points.length === 0} className={`p-3 rounded-full transition disabled:opacity-30 ${styles.buttonSecondary}`} title="Undo Last Point"> <Undo2 size={20} /> </button>
-                 <div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'}`}> <button onClick={stepBackward} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title="Previous Frame"> <SkipBack size={20} /> </button> <button onClick={togglePlay} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-900/20"> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button> <button onClick={stepForward} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title="Next Frame"> <SkipForward size={20} /> </button> </div>
+                 <button onClick={undoLastPoint} disabled={points.length === 0} className={`p-3 rounded-full transition disabled:opacity-30 ${styles.buttonSecondary}`} title={t.undoLast}> <Undo2 size={20} /> </button>
+                 <div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'}`}> 
+                    <button onClick={stepBackward} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame}> <SkipBack size={20} /> </button> 
+                    <button onClick={togglePlay} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-900/20" title={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button> 
+                    <button onClick={stepForward} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame}> <SkipForward size={20} /> </button> 
+                 </div>
                  <div className="flex-1 max-w-xl mx-4 flex items-center gap-3"> <span className={`text-xs font-mono w-12 text-right ${styles.textSecondary}`}>{formatTime(currentTime)}</span> <input type="range" min="0" max={duration || 100} step="0.01" value={currentTime} onChange={handleSeek} className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" /> <span className={`text-xs font-mono w-12 ${styles.textSecondary}`}>{formatTime(duration)}</span> </div>
-                 <div className={`flex items-center gap-2 px-4 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'}`}> <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title="Zoom Out"> <ZoomOut size={18} /> </button> <span className={`text-sm font-mono w-12 text-center ${styles.textSecondary}`}>{Math.round(zoom * 100)}%</span> <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title="Zoom In"> <ZoomIn size={18} /> </button> <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div> <button onClick={() => setZoom(1)} className={`p-2 rounded-full ${styles.buttonSecondary}`} title="Reset View"> <Maximize size={18} /> </button> </div>
+                 <div className={`flex items-center gap-2 px-4 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'}`}> <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.zoomOut}> <ZoomOut size={18} /> </button> <span className={`text-sm font-mono w-12 text-center ${styles.textSecondary}`}>{Math.round(zoom * 100)}%</span> <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.zoomIn}> <ZoomIn size={18} /> </button> <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div> <button onClick={() => setZoom(1)} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.resetView}> <Maximize size={18} /> </button> </div>
               </div>
             </div>
 
             <div className={`w-96 border-l flex flex-col transition-all z-20 shrink-0 ${styles.panel}`}>
-              <div className={`p-4 border-b flex justify-between items-center ${styles.panelHeader} ${styles.panelBorder}`}> <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}><Table size={16} /> Data Table ({activeObjId})</h2> </div>
+              <div className={`p-4 border-b flex justify-between items-center ${styles.panelHeader} ${styles.panelBorder}`}> <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}><Table size={16} /> {t.dataTable} ({activeObjId})</h2> </div>
               <div className={`p-4 border-b flex flex-col gap-4 ${styles.panelBgOnly} ${styles.panelBorder}`}> 
                 <div className="flex flex-col gap-1"> 
-                  <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>Origin: {origin ? `(${Math.round(origin.x)}, ${Math.round(origin.y)})` : "Not Set"}</span> </div> 
-                  <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>Scale: {pixelsPerMeter ? `${Math.round(pixelsPerMeter)} px/m` : "Not Set"}</span> {pixelsPerMeter && ( <button onClick={resetScale} className="hover:text-red-400 transition" title="Reset Scale"> <RotateCcw size={12} /> </button> )} </div>
-                  <button onClick={() => setZeroTime(!zeroTime)} className={`text-xs flex items-center gap-2 px-2 py-1 rounded border transition ${zeroTime ? 'bg-blue-900/30 border-blue-500/50 text-blue-400' : styles.buttonSecondary}`} title={zeroTime ? "Time starts at 0s" : "Showing absolute video time"}> <Clock size={12} /> <span>{zeroTime ? "t=0 at Start" : "Video Time"}</span> </button>
+                  <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>{t.originLabel}: {origin ? `(${Math.round(origin.x)}, ${Math.round(origin.y)})` : t.notSet}</span> </div> 
+                  <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>{t.scaleLabel}: {pixelsPerMeter ? `${Math.round(pixelsPerMeter)} px/m` : t.notSet}</span> {pixelsPerMeter && ( <button onClick={resetScale} className="hover:text-red-400 transition" title="Reset Scale"> <RotateCcw size={12} /> </button> )} </div>
+                  <button onClick={() => setZeroTime(!zeroTime)} className={`text-xs flex items-center gap-2 px-2 py-1 rounded border transition ${zeroTime ? 'bg-blue-900/30 border-blue-500/50 text-blue-400' : styles.buttonSecondary}`} title={zeroTime ? t.timeStart : t.videoTime}> <Clock size={12} /> <span>{zeroTime ? t.timeStart : t.videoTime}</span> </button>
                 </div> 
                 <div className={`border-t pt-3 ${styles.panelBorder}`}>
-                  <div className={`flex items-center justify-between text-xs mb-1 ${styles.textSecondary}`}> <span className="flex items-center gap-1"><CircleDashed size={12}/> Blur Size / Uncertainty</span> <span>{uncertaintyPx}px</span> </div>
+                  <div className={`flex items-center justify-between text-xs mb-1 ${styles.textSecondary}`}> <span className="flex items-center gap-1"><CircleDashed size={12}/> {t.blurSize}</span> <span>{uncertaintyPx}px</span> </div>
                   <input type="range" min="0" max="50" value={uncertaintyPx} onChange={(e) => setUncertaintyPx(Number(e.target.value))} className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                 </div>
-                {points.length > 0 && ( <button onClick={() => setPoints([])} className="text-red-400 hover:text-red-300 flex items-center justify-center gap-2 text-sm"> <Trash2 size={16} /> Clear Data </button> )} 
+                {points.length > 0 && ( <button onClick={() => setPoints([])} className="text-red-400 hover:text-red-300 flex items-center justify-center gap-2 text-sm"> <Trash2 size={16} /> {t.clearData} </button> )} 
               </div>
               <div className={`flex-1 overflow-y-auto ${styles.bg}`}> 
                   <div className="flex flex-col h-full">
@@ -1475,11 +1725,11 @@ export default function App() {
                           {positionData.map((p, i) => (
                             <tr key={i} className={`transition ${styles.tableRow}`}> <td className={`p-3 ${styles.textSecondary}`}>{i + 1}</td> <td className="p-3 font-mono text-blue-500">{p.time.toFixed(3)}</td> <td className={`p-3 font-mono ${styles.tableCell}`}>{p.x.toFixed(3)}</td> <td className={`p-3 font-mono ${styles.tableCell}`}>{p.y.toFixed(3)}</td> </tr>
                           ))}
-                          {points.length === 0 && ( <tr><td colSpan="4" className={`p-8 text-center ${styles.textSecondary}`}>No data points yet for Object {activeObjId}</td></tr> )}
+                          {points.length === 0 && ( <tr><td colSpan="4" className={`p-8 text-center ${styles.textSecondary}`}>{t.noData} {activeObjId}</td></tr> )}
                         </tbody>
                       </table>
                     </div>
-                    {points.length > 0 && ( <div className={`p-4 border-t ${styles.panelBgOnly} ${styles.panelBorder}`}> <button onClick={downloadCSV} className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded transition"> <Download size={18} /> Download CSV </button> </div> )}
+                    {points.length > 0 && ( <div className={`p-4 border-t ${styles.panelBgOnly} ${styles.panelBorder}`}> <button onClick={downloadCSV} className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded transition"> <Download size={18} /> {t.downloadCSV} </button> </div> )}
                   </div>
               </div>
             </div>
@@ -1493,15 +1743,15 @@ export default function App() {
               <div id="motion-chart" className={`rounded-xl border flex-1 flex flex-col overflow-hidden shadow-2xl ${styles.panel}`}>
                  <div className={`p-4 border-b flex gap-4 ${styles.panelBgOnly} ${styles.panelBorder}`}>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>Y-Axis</span>
+                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.yAxis}</span>
                       <select value={plotY} onChange={(e) => setPlotY(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
-                        <option value="x">X Position (m)</option> <option value="y">Y Position (m)</option> <option value="vx">X Velocity (m/s)</option> <option value="vy">Y Velocity (m/s)</option> <option value="time">Time (s)</option>
+                        <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option> <option value="time">{t.time}</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>X-Axis</span>
+                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.xAxis}</span>
                       <select value={plotX} onChange={(e) => setPlotX(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
-                         <option value="time">Time (s)</option> <option value="x">X Position (m)</option> <option value="y">Y Position (m)</option> <option value="vx">X Velocity (m/s)</option> <option value="vy">Y Velocity (m/s)</option>
+                         <option value="time">{t.time}</option> <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option>
                       </select>
                     </div>
                  </div>
@@ -1517,6 +1767,7 @@ export default function App() {
                           fontSize={16} 
                           domain={[xScale.min, xScale.max]}
                           ticks={xScale.ticks}
+                          tickFormatter={getTickFormatter(xScale.step)} 
                           label={{ value: labels[plotX], position: 'bottom', offset: 20, fill: styles.chartAxis, fontSize: 18 }} 
                         /> 
                         <YAxis 
@@ -1524,10 +1775,11 @@ export default function App() {
                           fontSize={16} 
                           domain={[yScale.min, yScale.max]}
                           ticks={yScale.ticks}
+                          tickFormatter={getTickFormatter(yScale.step)} 
                           label={{ value: labels[plotY], angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 18 }} 
                         /> 
                         <Tooltip contentStyle={styles.chartTooltip} formatter={(val) => (typeof val === 'number') ? val.toFixed(3) : val} labelFormatter={(val) => `${labels[plotX]}: ${val}`} /> 
-                        <Scatter name={`Data Points (${activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
+                        <Scatter name={`${t.dataPoints} (${activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
                         {fitEquation && <Line type="monotone" dataKey="fitY" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={false} />}
                         {['x', 'y'].includes(plotY) && ( <Scatter dataKey={plotY} fill="none" stroke="none"> <ErrorBar dataKey="error" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" /> </Scatter> )}
                       </ComposedChart> 
@@ -1537,15 +1789,16 @@ export default function App() {
               </div>
             </div>
 
-            <div className={`w-80 border-l flex flex-col p-6 gap-6 shrink-0 ${styles.panel}`}>
+            {/* UPDATED: Width w-96 to match Data Table, removed Analysis Tips */}
+            <div className={`w-96 border-l flex flex-col p-6 gap-6 shrink-0 ${styles.panel}`}>
                <div>
-                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> Curve Fitting ({activeObjId})</h3>
+                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> {t.curveFitting} ({activeObjId})</h3>
                  <div className="flex flex-col gap-2">
-                    <label className={`text-sm ${styles.textSecondary}`}>Model Type</label>
+                    <label className={`text-sm ${styles.textSecondary}`}>{t.modelType}</label>
                     <select value={fitModel} onChange={(e) => setFitModel(e.target.value)} className={`border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${styles.input}`}>
-                      <option value="none">None</option>
-                      <option value="linear">Linear (mx + b)</option>
-                      <option value="quadratic">Quadratic (Ax² + Bx + C)</option>
+                      <option value="none">{t.none}</option>
+                      <option value="linear">{t.linear}</option>
+                      <option value="quadratic">{t.quadratic}</option>
                     </select>
                  </div>
                </div>
@@ -1555,14 +1808,14 @@ export default function App() {
                    <div className="space-y-3">
                       {fitEquation.type === 'Linear' ? (
                         <>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>Slope (m)</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.m.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>Intercept (b)</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.b.toFixed(4)}</span></div>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.slope}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.m.toFixed(4)}</span></div>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.intercept}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.b.toFixed(4)}</span></div>
                         </>
                       ) : (
                         <>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>A term</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>B term</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>C term</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.aTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.bTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.cTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
                         </>
                       )}
                       
@@ -1579,36 +1832,28 @@ export default function App() {
                   
                   {/* NEW: Legend Position Control */}
                   <label className={`text-xs uppercase font-bold tracking-wider mb-1 ${styles.textSecondary} flex items-center gap-2`}>
-                    <LayoutTemplate size={14} /> Legend Position (Export)
+                    <LayoutTemplate size={14} /> {t.legendPos}
                   </label>
                   <select 
                     value={legendPosition} 
                     onChange={(e) => setLegendPosition(e.target.value)} 
                     className={`border rounded px-3 py-2 text-sm mb-2 focus:outline-none focus:border-blue-500 ${styles.input}`}
                   >
-                    <option value="top-left">Top Left</option>
-                    <option value="top-right">Top Right</option>
-                    <option value="bottom-left">Bottom Left</option>
-                    <option value="bottom-right">Bottom Right</option>
-                    <option value="none">None (Hide)</option>
+                    <option value="top-left">{t.topLeft}</option>
+                    <option value="top-right">{t.topRight}</option>
+                    <option value="bottom-left">{t.bottomLeft}</option>
+                    <option value="bottom-right">{t.bottomRight}</option>
+                    <option value="none">{t.hide}</option>
                   </select>
 
                   <button onClick={exportScientificGraph} className={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm`}>
-                    <Camera size={18} /> Export Graph (PNG)
+                    <Camera size={18} /> {t.exportGraph}
                   </button>
                   <button onClick={downloadCSV} className={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border ${styles.buttonSecondary}`}>
-                    <Download size={18} /> Export Data (CSV)
+                    <Download size={18} /> {t.exportData}
                   </button>
                </div>
 
-               <div className={`mt-auto border p-4 rounded-lg text-xs ${isDark ? 'bg-blue-900/20 border-blue-900/50 text-blue-200' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-                 <p className="mb-2 font-bold flex items-center gap-2"><Info size={14}/> Analysis Tips:</p>
-                 <ul className="list-disc pl-4 space-y-1 opacity-80">
-                   <li>Select <strong>Quadratic</strong> for free-fall to find gravity.</li>
-                   <li>Select <strong>Linear</strong> for constant velocity motion.</li>
-                   <li>The <strong>A term</strong> in quadratic fit represents ½a.</li>
-                 </ul>
-               </div>
             </div>
           </div>
         )}
@@ -1628,28 +1873,28 @@ export default function App() {
             
             <div className={`space-y-6 ${styles.text}`}>
                 <p className="text-lg font-medium opacity-90 leading-relaxed">
-                    A professional-grade, open-source video analysis tool designed for physics education.
+                    {t.aboutDesc}
                 </p>
                 
                 <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="grid grid-cols-[80px_1fr] gap-y-2 text-sm items-center">
-                        <span className="opacity-60 font-semibold">Version</span>
+                        <span className="opacity-60 font-semibold">{t.version}</span>
                         <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.0</span>
                         
-                        <span className="opacity-60 font-semibold">Author</span>
+                        <span className="opacity-60 font-semibold">{t.author}</span>
                         <span>Cesar Cortes</span>
                         
-                        <span className="opacity-60 font-semibold">Engine</span>
+                        <span className="opacity-60 font-semibold">{t.engine}</span>
                         <span className="flex items-center gap-1">Gemini Pro AI ✨</span>
                         
-                        <span className="opacity-60 font-semibold">License</span>
+                        <span className="opacity-60 font-semibold">{t.license}</span>
                         <span>MIT Open Source</span>
                     </div>
                 </div>
 
                 <div className="text-xs opacity-50 text-center pt-4 border-t border-slate-700/30 leading-relaxed">
-                    Copyright © 2026 Cesar Cortes. All rights reserved.<br/>
-                    Licensed under the MIT License.
+                    Copyright © 2026 Cesar Cortes. {t.rights}<br/>
+                    {t.licensedUnder}
                 </div>
             </div>
             </div>
