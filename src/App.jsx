@@ -1653,7 +1653,15 @@ export default function App() {
           {viewMode === 'tracker' && (
             <>
               <button onClick={() => { setIsTracking(!isTracking); setIsSettingOrigin(false); setIsCalibrating(false); }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}> <Target size={18} /> <span>{isTracking ? t.stopTracking : t.startTracking}</span> </button>
-              <button onClick={() => { setIsSettingOrigin(true); setIsCalibrating(false); setIsTracking(false); setShowInputModal(false); }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isSettingOrigin ? 'bg-blue-600 text-white' : styles.buttonSecondary}`}> <Crosshair size={18} /> <span>{origin ? t.moveOrigin : t.setOrigin}</span> </button>
+              <button onClick={() => { 
+                if (!origin && videoDims.w > 0) {
+                   setOrigin({ x: videoDims.w / 2, y: videoDims.h / 2 });
+                }
+                setIsSettingOrigin(true); 
+                setIsCalibrating(false); 
+                setIsTracking(false); 
+                setShowInputModal(false); 
+              }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isSettingOrigin ? 'bg-blue-600 text-white' : styles.buttonSecondary}`}> <Crosshair size={18} /> <span>{origin ? t.moveOrigin : t.setOrigin}</span> </button>
               <button onClick={handleScaleButtonClick} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isCalibrating ? 'bg-green-600 text-white' : pixelsPerMeter ? 'bg-green-100 text-green-700 border border-green-200' : styles.buttonSecondary}`}> {isCalibrating ? <CheckCircle2 size={18} /> : (pixelsPerMeter ? (isScaleVisible ? <Eye size={18} /> : <EyeOff size={18} />) : <Ruler size={18} />)} <span>{isCalibrating ? t.enterDistance : pixelsPerMeter ? (isScaleVisible ? t.hideScale : t.showScale) : t.setScale}</span> </button>
             </>
           )}
