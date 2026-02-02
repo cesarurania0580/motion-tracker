@@ -123,7 +123,10 @@ const TRANSLATIONS = {
     dataPoints: "Data Points",
     trendLine: "Trend Line",
     calcVel: "Calculated Velocity Data",
-    expPos: "Experimental Position Data"
+    expPos: "Experimental Position Data",
+    // NEW TRANSLATIONS
+    fpsLabel: "Frame Rate (FPS)",
+    fpsTooltip: "Set to 60 for high-speed videos"
   },
   es: {
     appTitle: "PhysTracker",
@@ -205,7 +208,10 @@ const TRANSLATIONS = {
     dataPoints: "Puntos de Datos",
     trendLine: "Línea de Tendencia",
     calcVel: "Datos de Velocidad Calculados",
-    expPos: "Datos de Posición Experimentales"
+    expPos: "Datos de Posición Experimentales",
+    // NEW TRANSLATIONS
+    fpsLabel: "Velocidad (FPS)",
+    fpsTooltip: "Usar 60 para videos de alta velocidad"
   }
 };
 
@@ -266,16 +272,18 @@ const calculateNiceScale = (minValue, maxValue, lockZero = false) => {
   return { min: niceMin, max: niceMax, ticks, step: niceStep };
 };
 
-// --- HELPER: VIDEO FRAME CONSTANTS ---
-const FPS = 30;
-const FRAME_DURATION = 1 / FPS; 
-
 export default function App() {
   // --- STATE MANAGEMENT ---
   
   // NEW: Language State
   const [language, setLanguage] = useState('en');
   const t = TRANSLATIONS[language]; // Helper for current translations
+
+  // NEW: FPS State (Default 30)
+  const [fps, setFps] = useState(30);
+
+  // NEW: Logo Error State (Fallback for Canvas/Preview)
+  const [logoError, setLogoError] = useState(false);
 
   // NEW: Multi-Object State
   const [objects, setObjects] = useState([
@@ -442,7 +450,8 @@ export default function App() {
             if (data.fitModel) setFitModel(data.fitModel);
             if (data.uncertaintyPx) setUncertaintyPx(data.uncertaintyPx);
             if (data.viewMode) setViewMode(data.viewMode);
-            if (data.language) setLanguage(data.language); // Restore Language
+            if (data.language) setLanguage(data.language); 
+            if (data.fps) setFps(data.fps); // Restore FPS
         } catch (e) {
             console.error("Failed to restore autosave", e);
         }
@@ -462,10 +471,11 @@ export default function App() {
         fitModel,
         uncertaintyPx,
         viewMode,
-        language
+        language,
+        fps // Save FPS
     };
     localStorage.setItem('physTracker_autosave', JSON.stringify(stateToSave));
-  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode, language]);
+  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode, language, fps]);
 
   const saveProject = () => {
     const stateToSave = {
@@ -479,7 +489,8 @@ export default function App() {
         zeroTime,
         fitModel,
         uncertaintyPx,
-        language
+        language,
+        fps // Save FPS
     };
     const blob = new Blob([JSON.stringify(stateToSave, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -523,6 +534,7 @@ export default function App() {
               setHasRestoredData(true);
               setVideoSrc(null); 
               if (data.language) setLanguage(data.language);
+              if (data.fps) setFps(data.fps); // Load FPS
               
               alert("Project loaded successfully. Please upload the corresponding video file.");
           } catch (err) {
@@ -562,6 +574,7 @@ export default function App() {
           setOriginAngle(0);
           setFitModel('none');
           setVideoDims({ w: 0, h: 0 });
+          // We intentionally do NOT reset FPS to keep user preference
       } else {
           // We just attached a video to restored data. Turn off the flag so next upload wipes it.
           setHasRestoredData(false);
@@ -1081,18 +1094,20 @@ export default function App() {
       setIsPlaying(false); 
       
       const currentTime = videoRef.current.currentTime;
-      // GRID-ALIGNED STEPPING (SYMMETRIC):
-      // Calculate current frame index based on 30fps
-      const currentFrame = Math.floor(currentTime * FPS + 0.001); // +epsilon to handle float precision
+      // DYNAMIC FPS CALCULATION
+      const frameDuration = 1 / fps;
+      
+      // Calculate current frame index based on dynamic FPS
+      const currentFrame = Math.floor(currentTime * fps + 0.001); 
       const nextFrame = currentFrame + 1;
       
       // Calculate target time: EXACT start of next frame + small epsilon
-      const targetTime = (nextFrame * FRAME_DURATION) + 0.001;
+      const targetTime = (nextFrame * frameDuration) + (frameDuration / 2); // Midpoint targeting
       
       const finalTime = Math.min(videoRef.current.duration, targetTime);
       videoRef.current.currentTime = finalTime;
     } 
-  }, []);
+  }, [fps]);
 
   const stepBackward = useCallback(() => { 
     if (videoRef.current) { 
@@ -1100,15 +1115,21 @@ export default function App() {
       setIsPlaying(false); 
       
       const currentTime = videoRef.current.currentTime;
-      const currentFrame = Math.round(currentTime * FPS); // Use round to find current block robustly
+      // DYNAMIC FPS CALCULATION
+      const frameDuration = 1 / fps;
+
+      // FIXED: Use Math.floor instead of Math.round
+      // Since we are at the midpoint (N.5), round() pushed us to N+1, making "back" go to N (current).
+      // floor() correctly identifies we are in frame N, so "back" goes to N-1.
+      const currentFrame = Math.floor(currentTime * fps + 0.001); 
       const prevFrame = currentFrame - 1;
       
-      const targetTime = (prevFrame * FRAME_DURATION) + 0.001;
+      const targetTime = (prevFrame * frameDuration) + (frameDuration / 2); // Midpoint targeting
       const finalTime = Math.max(0, targetTime);
       
       videoRef.current.currentTime = finalTime;
     } 
-  }, []);
+  }, [fps]);
 
   // Handler for when the video *actually* finishes moving to new time
   const handleSeeked = useCallback(() => {
@@ -1211,24 +1232,31 @@ export default function App() {
     });
 
     const velData = [];
-    for (let i = 0; i < sortedPoints.length - 1; i++) {
-        const pCurrent = sortedPoints[i];
+    // UPDATED: Central Finite Difference Method
+    // We skip the first (i=0) and last (i=length-1) points because they lack a neighbor.
+    for (let i = 1; i < sortedPoints.length - 1; i++) {
+        const pPrev = sortedPoints[i-1];
+        const pCurrent = sortedPoints[i]; // Used for the timestamp
         const pNext = sortedPoints[i+1];
         
-        const dt = pNext.time - pCurrent.time;
-        if (dt <= 0) continue;
+        // Calculate time span between neighbors (t_{i+1} - t_{i-1})
+        const dt = pNext.time - pPrev.time;
+        
+        // Safety check
+        if (dt <= 0.0001) continue;
 
-        const tMid = (pCurrent.time + pNext.time) / 2.0;
-        const adjustedTMid = zeroTime ? (tMid - startTime) : tMid;
+        // With Central Difference, velocity exists AT the current frame time, not the midpoint
+        const adjustedTime = zeroTime ? (pCurrent.time - startTime) : pCurrent.time;
 
-        const { x: curX, y: curY } = getRotatedCoords(pCurrent.x, pCurrent.y);
+        const { x: prvX, y: prvY } = getRotatedCoords(pPrev.x, pPrev.y);
         const { x: nxtX, y: nxtY } = getRotatedCoords(pNext.x, pNext.y);
 
-        const vx = (formatVal(nxtX) - formatVal(curX)) / dt;
-        const vy = (formatVal(nxtY) - formatVal(curY)) / dt;
+        // Formula: (Pos_Next - Pos_Prev) / (Time_Next - Time_Prev)
+        const vx = (formatVal(nxtX) - formatVal(prvX)) / dt;
+        const vy = (formatVal(nxtY) - formatVal(prvY)) / dt;
 
         velData.push({
-            time: parseFloat(adjustedTMid.toFixed(3)),
+            time: parseFloat(adjustedTime.toFixed(3)),
             vx: parseFloat(vx.toFixed(3)),
             vy: parseFloat(vy.toFixed(3)),
             x: null, 
@@ -1238,7 +1266,7 @@ export default function App() {
     }
 
     return { positionData: posData, velocityData: velData };
-  }, [points, origin, originAngle, pixelsPerMeter, zeroTime, uncertaintyPx, startTime]);
+  }, [points, origin, originAngle, pixelsPerMeter, zeroTime, uncertaintyPx, startTime, fps]);
 
   const activeData = useMemo(() => {
       if (['vx', 'vy'].includes(plotY)) {
@@ -1354,7 +1382,8 @@ export default function App() {
   const downloadCSV = () => {
     const headers = ["Time (s)", "X (m)", "Y (m)", "Uncertainty (m)"];
     const rows = positionData.map(row => `${row.time},${row.x},${row.y},${row.error}`);
-    const vHeaders = ["\nVelocity Data (Midpoint)", "Time Mid (s)", "Vx (m/s)", "Vy (m/s)"];
+    // UPDATED Header to reflect Central Difference method
+    const vHeaders = ["\nVelocity Data (Central Difference)", "Time (s)", "Vx (m/s)", "Vy (m/s)"];
     const vRows = velocityData.map(row => `,${row.time},${row.vx},${row.vy}`);
     const csvContent = headers.join(",") + "\n" + rows.join("\n") + "\n" + vHeaders.join(",") + "\n" + vRows.join("\n");
     const link = document.createElement("a");
@@ -1600,7 +1629,22 @@ export default function App() {
       {/* HEADER WITH VIEW SWITCHER */}
       <div className={`p-4 border-b flex justify-between items-center shrink-0 h-16 ${styles.panel}`}>
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-blue-400">{t.appTitle}</h1>
+          
+          {/* LOGO IMAGE with Fallback */}
+          {!logoError ? (
+             <img 
+               src={isDark ? "/logo-dark.png" : "/logo-light.png"} 
+               alt="PhysTracker" 
+               className="h-10 w-auto object-contain" 
+               onError={() => setLogoError(true)}
+             />
+          ) : (
+             <h1 className="text-xl font-bold">
+                <span className={isDark ? "text-cyan-400" : "text-cyan-600"}>Phys</span>
+                <span className={isDark ? "text-slate-200" : "text-slate-700"}>Tracker</span>
+             </h1>
+          )}
+
           <div className={`flex rounded p-1 border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
             <button onClick={() => setViewMode('tracker')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'tracker' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white shadow-sm text-slate-900') : styles.textSecondary + ' hover:' + styles.text}`}>{t.trackerMode}</button>
             <button onClick={() => setViewMode('analysis')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'analysis' ? (isDark ? 'bg-slate-700 text-blue-400' : 'bg-white shadow-sm text-blue-600') : styles.textSecondary + ' hover:' + styles.text}`}>{t.analysisMode}</button>
@@ -1673,12 +1717,14 @@ export default function App() {
         {/* VIEW 1: TRACKER MODE */}
         {viewMode === 'tracker' && (
           <>
-            <div className={`flex-1 flex flex-col min-w-0 ${styles.bg}`}>
+            <div className={`flex-1 flex flex-col min-w-0 ${styles.bg} relative`}>
+              {/* MOVED TRASH ICON HERE - FIXED OVERLAY */}
+              <div ref={trashRef} className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}> <Trash2 size={32} /> <span className="text-xs font-bold mt-2"> {t.dropToDelete} </span> </div>
+              
               <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start justify-center p-4 relative ${styles.workspaceBg}`}>
                 {/* REMOVED OLD SVG RETICLE */}
                 {dragState === 'point' && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="13" cy="13" r="4" fill={activeObjectColor} stroke="white" strokeWidth="1.5" /> </svg> </div> )}
                 {dragState === 'calibration' && ( <div className="fixed z-[100] w-12 h-12 rounded-full border-4 border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.8)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center" style={{ left: mousePos.x, top: mousePos.y }}> <div className="w-1.5 h-1.5 bg-green-400 rounded-full" /> </div> )}
-                <div ref={trashRef} className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}> <Trash2 size={32} /> <span className="text-xs font-bold mt-2"> {t.dropToDelete} </span> </div>
                 {showInputModal && ( 
                   <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 border p-6 rounded-xl shadow-2xl z-50 w-80 text-center ${styles.panel}`}>
                     <h3 className={`text-lg font-bold mb-4 ${styles.text}`}>{t.setRealDistance}</h3>
@@ -1711,7 +1757,18 @@ export default function App() {
             <div className={`w-96 border-l flex flex-col transition-all z-20 shrink-0 ${styles.panel}`}>
               <div className={`p-4 border-b flex justify-between items-center ${styles.panelHeader} ${styles.panelBorder}`}> <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}><Table size={16} /> {t.dataTable} ({activeObjId})</h2> </div>
               <div className={`p-4 border-b flex flex-col gap-4 ${styles.panelBgOnly} ${styles.panelBorder}`}> 
-                <div className="flex flex-col gap-1"> 
+                {/* NEW: FPS SETTING */}
+                <div className="flex items-center justify-between">
+                    <span className={`text-xs font-bold uppercase tracking-wider ${styles.textSecondary}`}>{t.fpsLabel}</span>
+                    <select value={fps} onChange={(e) => setFps(Number(e.target.value))} className={`text-xs p-1 rounded border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-300'}`}>
+                        <option value="30">30 fps</option>
+                        <option value="60">60 fps</option>
+                        <option value="120">120 fps</option>
+                        <option value="240">240 fps</option>
+                    </select>
+                </div>
+
+                <div className="flex flex-col gap-1 border-t pt-3 border-slate-700/20"> 
                   <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>{t.originLabel}: {origin ? `(${Math.round(origin.x)}, ${Math.round(origin.y)})` : t.notSet}</span> </div> 
                   <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>{t.scaleLabel}: {pixelsPerMeter ? `${Math.round(pixelsPerMeter)} px/m` : t.notSet}</span> {pixelsPerMeter && ( <button onClick={resetScale} className="hover:text-red-400 transition" title="Reset Scale"> <RotateCcw size={12} /> </button> )} </div>
                   <button onClick={() => setZeroTime(!zeroTime)} className={`text-xs flex items-center gap-2 px-2 py-1 rounded border transition ${zeroTime ? 'bg-blue-900/30 border-blue-500/50 text-blue-400' : styles.buttonSecondary}`} title={zeroTime ? t.timeStart : t.videoTime}> <Clock size={12} /> <span>{zeroTime ? t.timeStart : t.videoTime}</span> </button>
@@ -1727,7 +1784,7 @@ export default function App() {
                     <div className="flex-1 overflow-auto">
                       <table className="w-full text-sm text-left">
                         <thead className={`sticky top-0 shadow-md ${styles.tableHeader}`}>
-                          <tr> <th className="p-3">#</th> <th className="p-3">Time</th> <th className="p-3"> X (m) {pixelsPerMeter && <span className="font-normal text-xs opacity-70">±{uncertaintyMeters.toFixed(3)}</span>} </th> <th className="p-3"> Y (m) {pixelsPerMeter && <span className="font-normal text-xs opacity-70">±{uncertaintyMeters.toFixed(3)}</span>} </th> </tr>
+                          <tr> <th className="p-3">#</th> <th className="p-3">{t.time}</th> <th className="p-3">{t.xPos.split(' ')[0]} (m) <span className="font-normal text-xs opacity-70">±{uncertaintyMeters.toFixed(3)}</span> </th> <th className="p-3"> {t.yPos.split(' ')[0]} (m) <span className="font-normal text-xs opacity-70">±{uncertaintyMeters.toFixed(3)}</span> </th> </tr>
                         </thead>
                         <tbody className={`divide-y ${styles.tableDivider}`}>
                           {positionData.map((p, i) => (
@@ -1797,7 +1854,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* UPDATED: Width w-96 to match Data Table, removed Analysis Tips */}
             <div className={`w-96 border-l flex flex-col p-6 gap-6 shrink-0 ${styles.panel}`}>
                <div>
                  <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> {t.curveFitting} ({activeObjId})</h3>
