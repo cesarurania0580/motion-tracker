@@ -23,7 +23,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X, Languages } from 'lucide-react';
+import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X, Languages, Coffee, Github, Mail } from 'lucide-react';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
 
 // --- HELPER: FORMAT TICKS DYNAMICALLY ---
@@ -126,7 +126,11 @@ const TRANSLATIONS = {
     expPos: "Experimental Position Data",
     // NEW TRANSLATIONS
     fpsLabel: "Frame Rate (FPS)",
-    fpsTooltip: "Set to 60 for high-speed videos"
+    fpsTooltip: "Set to 60 for high-speed videos",
+    // Link Buttons
+    visitGithub: "Visit GitHub",
+    sendFeedback: "Send Feedback",
+    buyCoffee: "Support Project"
   },
   es: {
     appTitle: "PhysTracker",
@@ -211,7 +215,11 @@ const TRANSLATIONS = {
     expPos: "Datos de Posición Experimentales",
     // NEW TRANSLATIONS
     fpsLabel: "Velocidad (FPS)",
-    fpsTooltip: "Usar 60 para videos de alta velocidad"
+    fpsTooltip: "Usar 60 para videos de alta velocidad",
+    // Link Buttons
+    visitGithub: "Ver en GitHub",
+    sendFeedback: "Enviar Comentarios",
+    buyCoffee: "Apoyar Proyecto"
   }
 };
 
@@ -1232,37 +1240,89 @@ export default function App() {
     });
 
     const velData = [];
-    // UPDATED: Central Finite Difference Method
-    // We skip the first (i=0) and last (i=length-1) points because they lack a neighbor.
-    for (let i = 1; i < sortedPoints.length - 1; i++) {
-        const pPrev = sortedPoints[i-1];
-        const pCurrent = sortedPoints[i]; // Used for the timestamp
-        const pNext = sortedPoints[i+1];
-        
-        // Calculate time span between neighbors (t_{i+1} - t_{i-1})
-        const dt = pNext.time - pPrev.time;
-        
-        // Safety check
-        if (dt <= 0.0001) continue;
 
-        // With Central Difference, velocity exists AT the current frame time, not the midpoint
+    // --- VELOCITY CALCULATION (3-Point Formula) ---
+    // N is the index of the last point
+    const N = sortedPoints.length - 1;
+
+    for (let i = 0; i <= N; i++) {
+        // Basic requirements for any velocity calculation: at least 3 points total
+        if (N < 2) break;
+
+        const pCurrent = sortedPoints[i];
         const adjustedTime = zeroTime ? (pCurrent.time - startTime) : pCurrent.time;
 
-        const { x: prvX, y: prvY } = getRotatedCoords(pPrev.x, pPrev.y);
-        const { x: nxtX, y: nxtY } = getRotatedCoords(pNext.x, pNext.y);
+        let vx = null;
+        let vy = null;
 
-        // Formula: (Pos_Next - Pos_Prev) / (Time_Next - Time_Prev)
-        const vx = (formatVal(nxtX) - formatVal(prvX)) / dt;
-        const vy = (formatVal(nxtY) - formatVal(prvY)) / dt;
+        // 1. FIRST POINT (Forward Difference)
+        if (i === 0) {
+            const p0 = sortedPoints[0];
+            const p1 = sortedPoints[1];
+            const p2 = sortedPoints[2];
 
-        velData.push({
-            time: parseFloat(adjustedTime.toFixed(3)),
-            vx: parseFloat(vx.toFixed(3)),
-            vy: parseFloat(vy.toFixed(3)),
-            x: null, 
-            y: null,
-            error: null 
-        });
+            const { x: x0, y: y0 } = getRotatedCoords(p0.x, p0.y);
+            const { x: x1, y: y1 } = getRotatedCoords(p1.x, p1.y);
+            const { x: x2, y: y2 } = getRotatedCoords(p2.x, p2.y);
+
+            const t0 = p0.time;
+            const t1 = p1.time;
+            const t2 = p2.time;
+
+            // Assumes constant dt, but robust enough for minor variations
+            const dt = t1 - t0;
+            if (dt > 0.0001) {
+                // Formula: (-3x0 + 4x1 - x2) / (2dt)
+                vx = (-3*formatVal(x0) + 4*formatVal(x1) - formatVal(x2)) / (2*dt);
+                vy = (-3*formatVal(y0) + 4*formatVal(y1) - formatVal(y2)) / (2*dt);
+            }
+        }
+        // 2. LAST POINT (Backward Difference)
+        else if (i === N) {
+            const pN = sortedPoints[N];
+            const pN1 = sortedPoints[N-1];
+            const pN2 = sortedPoints[N-2];
+
+            const { x: xN, y: yN } = getRotatedCoords(pN.x, pN.y);
+            const { x: xN1, y: yN1 } = getRotatedCoords(pN1.x, pN1.y);
+            const { x: xN2, y: yN2 } = getRotatedCoords(pN2.x, pN2.y);
+
+            const tN = pN.time;
+            const tN1 = pN1.time;
+            
+            const dt = tN - tN1;
+            if (dt > 0.0001) {
+                 // Formula: (3xN - 4xN-1 + xN-2) / (2dt)
+                vx = (3*formatVal(xN) - 4*formatVal(xN1) + formatVal(xN2)) / (2*dt);
+                vy = (3*formatVal(yN) - 4*formatVal(yN1) + formatVal(yN2)) / (2*dt);
+            }
+        }
+        // 3. MIDDLE POINTS (Central Difference)
+        else {
+            const pPrev = sortedPoints[i-1];
+            const pNext = sortedPoints[i+1];
+            
+            const dt = pNext.time - pPrev.time;
+            
+            if (dt > 0.0001) {
+                const { x: prvX, y: prvY } = getRotatedCoords(pPrev.x, pPrev.y);
+                const { x: nxtX, y: nxtY } = getRotatedCoords(pNext.x, pNext.y);
+
+                vx = (formatVal(nxtX) - formatVal(prvX)) / dt;
+                vy = (formatVal(nxtY) - formatVal(prvY)) / dt;
+            }
+        }
+
+        if (vx !== null && vy !== null) {
+            velData.push({
+                time: parseFloat(adjustedTime.toFixed(3)),
+                vx: parseFloat(vx.toFixed(3)),
+                vy: parseFloat(vy.toFixed(3)),
+                x: null, 
+                y: null,
+                error: null 
+            });
+        }
     }
 
     return { positionData: posData, velocityData: velData };
@@ -1953,6 +2013,20 @@ export default function App() {
                         
                         <span className="opacity-60 font-semibold">{t.license}</span>
                         <span>MIT Open Source</span>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <a href="https://github.com/cesarurania0580/motion-tracker" target="_blank" rel="noreferrer" className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-gray-800 text-white hover:bg-gray-700 transition">
+                        <Github size={18} /> {t.visitGithub}
+                    </a>
+                    <div className="flex gap-3">
+                        <a href="mailto:phystracker.contact@gmail.com" className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border transition ${styles.buttonSecondary}`}>
+                            <Mail size={18} /> {t.sendFeedback}
+                        </a>
+                        <a href="https://buymeacoffee.com/phystracker" target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-yellow-400 text-yellow-900 font-bold hover:bg-yellow-300 transition">
+                            <Coffee size={18} /> {t.buyCoffee}
+                        </a>
                     </div>
                 </div>
 
