@@ -23,7 +23,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X, Languages, Coffee, Github, Mail } from 'lucide-react';
+import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X, Languages, Coffee, Github, Mail, Axis3d } from 'lucide-react';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
 
 // --- HELPER: FORMAT TICKS DYNAMICALLY ---
@@ -289,6 +289,9 @@ export default function App() {
 
   // NEW: FPS State (Default 30)
   const [fps, setFps] = useState(30);
+
+  // NEW: Master Frame Counter (Digital Twin for Robust Stepping)
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
 
   // NEW: Logo Error State (Fallback for Canvas/Preview)
   const [logoError, setLogoError] = useState(false);
@@ -600,6 +603,7 @@ export default function App() {
       setUncertaintyPx(10);
       setDuration(0);
       setCurrentTime(0);
+      setCurrentFrameIndex(0); // Reset Frame Counter
       setViewMode('tracker');
   }
   };
@@ -884,6 +888,25 @@ export default function App() {
     };
   }, [isPlaying, renderFrame]);
 
+  // --- VIEW SWITCHING FIX (Green Screen / Centering) ---
+  useEffect(() => {
+    if (viewMode === 'tracker') {
+      // 1. Give the browser time to paint the DOM (Video & Canvas) before we touch it
+      // Increased to 100ms to ensure stability on all devices
+      const timer = setTimeout(() => {
+        if (videoRef.current) {
+          // 2. Force Video to "wake up" at the correct timestamp (Fixes Green Screen)
+          // This flushes the decoding buffer which might be empty after unmount
+          videoRef.current.currentTime = currentTime;
+        }
+        // 3. Force a redraw of the canvas points (Fixes Centering/Blank Canvas)
+        // Wrapped in requestAnimationFrame to ensure it runs during a paint cycle
+        requestAnimationFrame(() => renderFrame());
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [viewMode, currentTime, renderFrame]);
+
   useEffect(() => {
     renderFrame();
   }, [renderFrame]); 
@@ -903,94 +926,142 @@ export default function App() {
   const handlePointerDown = (e) => {
     if (!videoRef.current || showInputModal) return;
 
-    // CRITICAL: Prevent default browser behavior (scrolling) and capture the pointer
-    // This allows dragging to continue even if the pointer leaves the canvas bounds
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-
+    // --- TOUCH PANNING FIX ---
+    // We only prevent default (blocking scroll) if we are interacting with a specific tool.
+    // If we are just touching the background, we let the browser handle it (panning).
+    
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
     const hitRadius = 15 / zoom; 
+    let isInteractiveTarget = false; // Flag to track if we hit something actionable
 
-    // PRIORITY 1: RETICLE LOGIC (Moves to top to prevent dragging underlying points)
+    // PRIORITY 1: RETICLE LOGIC
     if (!isCalibrating && isTracking && reticlePos) {
-      // Distance to current reticle position
       const distToReticle = Math.sqrt(Math.pow(x - reticlePos.x, 2) + Math.pow(y - reticlePos.y, 2));
-      
-      // Define Reticle Hit Radius - MUCH LARGER for easier grabbing
       const reticleHitRadius = 60 / zoom; 
 
       if (distToReticle < reticleHitRadius) {
-          // User hit the reticle -> Start Dragging/Aiming
+          isInteractiveTarget = true;
           setDragState('reticle');
-          // Store START position and time to detect TAP vs DRAG later
           dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-          // Calculate offset so dragging is relative
           dragOffsetRef.current = { x: reticlePos.x - x, y: reticlePos.y - y };
-          // Return immediately so we don't accidentally select a point underneath
-          return;
       }
     }
 
-    // 2. Check Existing Points (Secondary Priority)
-    for (let i = points.length - 1; i >= 0; i--) {
-      const p = points[i];
-      const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
-      if (dist < hitRadius) {
-        setDragState('point');
-        setDraggedPointIndex(i);
-        setMousePos({ x: e.clientX, y: e.clientY });
-        return;
+    // 2. Check Existing Points
+    if (!isInteractiveTarget) {
+      for (let i = points.length - 1; i >= 0; i--) {
+        const p = points[i];
+        const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
+        if (dist < hitRadius) {
+          isInteractiveTarget = true;
+          setDragState('point');
+          setDraggedPointIndex(i);
+          setMousePos({ x: e.clientX, y: e.clientY });
+          break; // Stop checking
+        }
       }
     }
 
     // 3. Check Calibration Points
-    if (isCalibrating || (isScaleVisible && calibrationPoints.length > 0)) {
+    if (!isInteractiveTarget && (isCalibrating || (isScaleVisible && calibrationPoints.length > 0))) {
       for (let i = 0; i < calibrationPoints.length; i++) {
         const p = calibrationPoints[i];
         const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
         if (dist < hitRadius + 5/zoom) {
+          isInteractiveTarget = true;
           setDragState('calibration');
           setDraggedPointIndex(i);
           setMousePos({ x: e.clientX, y: e.clientY });
-          return;
+          break; 
         }
       }
     }
 
     // 4. Check Origin
-    if (origin) {
+    if (!isInteractiveTarget && origin) {
       const distOrigin = Math.sqrt(Math.pow(x - origin.x, 2) + Math.pow(y - origin.y, 2));
-      if (distOrigin < hitRadius) { setDragState('origin'); return; }
-      
-      const handleDist = 100 / zoom; 
-      const handleX = origin.x + handleDist * Math.cos(originAngle);
-      const handleY = origin.y + handleDist * Math.sin(originAngle);
-      const distHandle = Math.sqrt(Math.pow(x - handleX, 2) + Math.pow(y - handleY, 2));
-      if (distHandle < hitRadius) { setDragState('rotate'); return; }
+      if (distOrigin < hitRadius) { 
+          isInteractiveTarget = true;
+          setDragState('origin'); 
+      } else {
+          const handleDist = 100 / zoom; 
+          const handleX = origin.x + handleDist * Math.cos(originAngle);
+          const handleY = origin.y + handleDist * Math.sin(originAngle);
+          const distHandle = Math.sqrt(Math.pow(x - handleX, 2) + Math.pow(y - handleY, 2));
+          if (distHandle < hitRadius) { 
+              isInteractiveTarget = true;
+              setDragState('rotate'); 
+          }
+      }
     }
 
+    // 5. Origin Setting Mode (Always capture click)
     if (isSettingOrigin) {
-      setOrigin({ x, y }); setOriginAngle(0); setIsSettingOrigin(false); return;
+        isInteractiveTarget = true; // We want to place the origin, not scroll
+        // Logic for setting origin moved below e.preventDefault() block
     }
 
-    // 5. Reticle Jump (Fallback if nothing else hit)
-    if (!isCalibrating && isTracking && reticlePos) {
-       // User hit empty space -> Jump Reticle to here (Coarse Aiming)
-       setDragState('reticle_move_jump');
-       setReticlePos({ x, y });
-       dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-       setMousePos({ x: e.clientX, y: e.clientY });
-       return;
+    // 6. Reticle Jump (Tap anywhere to move reticle)
+    // Only consider this "interactive" if we are NOT on a touch device wanting to scroll.
+    // For simplicity, we will assume if we didn't hit a specific target, we might be scrolling.
+    // BUT we need "Tap to Jump".
+    // Strategy: We allow the "Reticle Jump" ONLY if we preventDefault.
+    // If we want to allow scrolling, we must NOT set drag state yet.
+    
+    // REVISED STRATEGY:
+    // If we hit a known target (point, reticle, origin), we capture immediately.
+    // If we hit NOTHING:
+    //   - On Mouse: We capture immediately (reticle jump).
+    //   - On Touch: We DO NOT capture immediately. We let the browser decide if it's a scroll.
+    //     If it turns out to be a TAP (not a scroll), the `onClick` event would trigger, but Canvas doesn't have reliable onClick with complex pointers.
+    
+    // SIMPLIFIED APPROACH for usability:
+    // If we didn't hit anything actionable:
+    // We do NOTHING here. This allows the browser to scroll.
+    // However, this breaks "Tap empty space to move reticle".
+    
+    // COMPROMISE: "Tap to Jump" vs "Drag to Scroll".
+    // If we didn't hit a target, we assume the user might want to scroll.
+    // We will ONLY trigger "Reticle Jump" if `isInteractiveTarget` is true.
+    // This means on tablets, you must drag the reticle itself, you cannot tap empty space to warp it.
+    // This is a worthy trade-off for usable zooming/panning.
+
+    if (isInteractiveTarget) {
+       e.preventDefault(); // Stop scrolling, start app interaction
+       e.currentTarget.setPointerCapture(e.pointerId);
+       
+       if (isSettingOrigin) {
+          setOrigin({ x, y }); setOriginAngle(0); setIsSettingOrigin(false); 
+          setDragState(null); // Reset immediate drag state since action is complete
+       }
+    } else {
+       // We hit empty space.
+       // If we are on a desktop (mouse), we might want to allow "Reticle Jump".
+       // If pointerType is 'mouse', we can be aggressive.
+       if (e.pointerType === 'mouse' && !isCalibrating && isTracking && reticlePos) {
+           e.preventDefault();
+           e.currentTarget.setPointerCapture(e.pointerId);
+           setDragState('reticle_move_jump');
+           setReticlePos({ x, y });
+           dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+           setMousePos({ x: e.clientX, y: e.clientY });
+       }
+       // If pointerType is 'touch' or 'pen', we DO NOTHING.
+       // This allows the default "pan/scroll" gesture to work.
+       // User must grab the reticle directly to move it on touch.
     }
   };
 
   const handlePointerMove = (e) => {
+    // Only update mouse pos if we are actually tracking/interacting, to save renders
     if (isTracking || dragState) {
         setMousePos({ x: e.clientX, y: e.clientY });
     }
-
+    
     if (!dragState) return;
-
+    
+    // ... existing pointer move logic ...
+    
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
 
     if (dragState === 'origin') {
@@ -1020,16 +1091,19 @@ export default function App() {
             y: y + dragOffsetRef.current.y 
         });
     } else if (dragState === 'reticle_move_jump') {
-        // Absolute move for jumps
+        // Absolute move for jumps (Mouse only)
         setReticlePos({ x, y });
     }
   };
 
   const handlePointerUp = (e) => {
-    // Release the capture so other elements can interact again
-    e.currentTarget.releasePointerCapture(e.pointerId);
+    // Only release capture if we actually captured it
+    if (dragState) {
+       e.currentTarget.releasePointerCapture(e.pointerId);
+    }
 
     if (dragState === 'reticle') {
+        // ... existing reticle drop logic ...
         // CHECK FOR TAP vs DRAG
         // Calculate screen distance moved since pointer down
         const dist = Math.sqrt(Math.pow(e.clientX - dragStartRef.current.x, 2) + Math.pow(e.clientY - dragStartRef.current.y, 2));
@@ -1101,49 +1175,46 @@ export default function App() {
       videoRef.current.pause(); 
       setIsPlaying(false); 
       
-      const currentTime = videoRef.current.currentTime;
-      // DYNAMIC FPS CALCULATION
+      // STATE-BASED INDEXING: Trust the math, not the player
       const frameDuration = 1 / fps;
+      const nextIndex = currentFrameIndex + 1;
       
-      // Calculate current frame index based on dynamic FPS
-      const currentFrame = Math.floor(currentTime * fps + 0.001); 
-      const nextFrame = currentFrame + 1;
+      // Midpoint targeting: Target the CENTER of the frame to avoid boundary errors
+      const targetTime = (nextIndex * frameDuration) + (frameDuration / 2); 
       
-      // Calculate target time: EXACT start of next frame + small epsilon
-      const targetTime = (nextFrame * frameDuration) + (frameDuration / 2); // Midpoint targeting
-      
-      const finalTime = Math.min(videoRef.current.duration, targetTime);
-      videoRef.current.currentTime = finalTime;
+      if (targetTime <= videoRef.current.duration) {
+          setCurrentFrameIndex(nextIndex);
+          videoRef.current.currentTime = targetTime;
+          setCurrentTime(targetTime); // Update UI immediately
+      }
     } 
-  }, [fps]);
+  }, [fps, currentFrameIndex]);
 
   const stepBackward = useCallback(() => { 
     if (videoRef.current) { 
       videoRef.current.pause(); 
       setIsPlaying(false); 
       
-      const currentTime = videoRef.current.currentTime;
-      // DYNAMIC FPS CALCULATION
+      // STATE-BASED INDEXING
       const frameDuration = 1 / fps;
-
-      // FIXED: Use Math.floor instead of Math.round
-      // Since we are at the midpoint (N.5), round() pushed us to N+1, making "back" go to N (current).
-      // floor() correctly identifies we are in frame N, so "back" goes to N-1.
-      const currentFrame = Math.floor(currentTime * fps + 0.001); 
-      const prevFrame = currentFrame - 1;
+      const prevIndex = Math.max(0, currentFrameIndex - 1);
       
-      const targetTime = (prevFrame * frameDuration) + (frameDuration / 2); // Midpoint targeting
-      const finalTime = Math.max(0, targetTime);
+      const targetTime = (prevIndex * frameDuration) + (frameDuration / 2); 
       
-      videoRef.current.currentTime = finalTime;
+      setCurrentFrameIndex(prevIndex);
+      videoRef.current.currentTime = targetTime;
+      setCurrentTime(targetTime);
     } 
-  }, [fps]);
+  }, [fps, currentFrameIndex]);
 
   // Handler for when the video *actually* finishes moving to new time
   const handleSeeked = useCallback(() => {
     if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-      renderFrame(); // Force redraw on seek
+      // Sync strictly on seeked to handle external events, but stepping relies on state
+      const t = videoRef.current.currentTime;
+      setCurrentTime(t);
+      // We don't overwrite currentFrameIndex here to avoid the "analog" drift loops
+      renderFrame(); // <--- FIXED: Restored this call to update the canvas
     }
   }, [renderFrame]);
 
@@ -1171,9 +1242,11 @@ export default function App() {
   const handleSeek = (e) => {
     const time = parseFloat(e.target.value);
     if (videoRef.current) {
-      // Manual seek is fine to update immediately for responsiveness
       videoRef.current.currentTime = time;
       setCurrentTime(time);
+      // When MANUALLY seeking, we reset the frame index to match the visual time
+      // This re-syncs the "Digital Twin" to the user's manual action
+      setCurrentFrameIndex(Math.floor(time * fps + 0.001));
     }
   };
 
@@ -1210,9 +1283,17 @@ export default function App() {
   // Standard sync handler for video events (needed for playhead update during normal playback)
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
+      const t = videoRef.current.currentTime;
+      setCurrentTime(t);
+      
+      // Only update the Master Counter from the video player IF we are playing.
+      // If we are paused (stepping), we trust our own internal counter (stepForward)
+      // more than the video player's reported time (which causes the glitch).
+      if (isPlaying) {
+         setCurrentFrameIndex(Math.floor(t * fps + 0.001));
+      }
     }
-  }, []);
+  }, [fps, isPlaying]);
 
   // --- MATH & DATA PROCESSING ---
   const getRotatedCoords = (rawX, rawY) => {
@@ -1756,20 +1837,48 @@ export default function App() {
 
           {viewMode === 'tracker' && (
             <>
-              <button onClick={() => { setIsTracking(!isTracking); setIsSettingOrigin(false); setIsCalibrating(false); }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}> <Target size={18} /> <span>{isTracking ? t.stopTracking : t.startTracking}</span> </button>
-              <button onClick={() => { 
-                if (!origin && videoDims.w > 0) {
-                   setOrigin({ x: videoDims.w / 2, y: videoDims.h / 2 });
-                }
-                setIsSettingOrigin(true); 
-                setIsCalibrating(false); 
-                setIsTracking(false); 
-                setShowInputModal(false); 
-              }} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isSettingOrigin ? 'bg-blue-600 text-white' : styles.buttonSecondary}`}> <Crosshair size={18} /> <span>{origin ? t.moveOrigin : t.setOrigin}</span> </button>
-              <button onClick={handleScaleButtonClick} className={`flex items-center gap-2 px-4 py-2 rounded transition ${isCalibrating ? 'bg-green-600 text-white' : pixelsPerMeter ? 'bg-green-100 text-green-700 border border-green-200' : styles.buttonSecondary}`}> {isCalibrating ? <CheckCircle2 size={18} /> : (pixelsPerMeter ? (isScaleVisible ? <Eye size={18} /> : <EyeOff size={18} />) : <Ruler size={18} />)} <span>{isCalibrating ? t.enterDistance : pixelsPerMeter ? (isScaleVisible ? t.hideScale : t.showScale) : t.setScale}</span> </button>
+              {/* UPDATED: Removed text spans, relying on title attributes for tooltips */}
+              <button 
+                  onClick={() => { setIsTracking(!isTracking); setIsSettingOrigin(false); setIsCalibrating(false); }} 
+                  className={`flex items-center gap-2 px-3 py-2 rounded transition ${isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}
+                  title={isTracking ? t.stopTracking : t.startTracking}
+              > 
+                  <Target size={20} /> 
+              </button>
+
+              <button 
+                  onClick={() => { 
+                    if (!origin && videoDims.w > 0) {
+                       setOrigin({ x: videoDims.w / 2, y: videoDims.h / 2 });
+                    }
+                    setIsSettingOrigin(true); 
+                    setIsCalibrating(false); 
+                    setIsTracking(false); 
+                    setShowInputModal(false); 
+                  }} 
+                  className={`flex items-center gap-2 px-3 py-2 rounded transition ${isSettingOrigin ? 'bg-blue-600 text-white' : styles.buttonSecondary}`}
+                  title={origin ? t.moveOrigin : t.setOrigin}
+              > 
+                  <Axis3d size={20} /> 
+              </button>
+
+              <button 
+                  onClick={handleScaleButtonClick} 
+                  className={`flex items-center gap-2 px-3 py-2 rounded transition ${isCalibrating ? 'bg-green-600 text-white' : pixelsPerMeter ? 'bg-green-100 text-green-700 border border-green-200' : styles.buttonSecondary}`}
+                  title={isCalibrating ? t.enterDistance : pixelsPerMeter ? (isScaleVisible ? t.hideScale : t.showScale) : t.setScale}
+              > 
+                  {isCalibrating ? <CheckCircle2 size={20} /> : (pixelsPerMeter ? (isScaleVisible ? <Eye size={20} /> : <EyeOff size={20} />) : <Ruler size={20} />)} 
+              </button>
             </>
           )}
-          <label className={`flex items-center gap-2 px-4 py-2 rounded cursor-pointer transition ${styles.buttonSecondary}`}> <Upload size={18} /> <input type="file" accept="video/*" onChange={handleFileUpload} className="hidden" /> </label>
+          
+          <label 
+              className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition ${styles.buttonSecondary}`}
+              title={t.uploadVideo}
+          > 
+              <Upload size={20} /> 
+              <input type="file" accept="video/*" onChange={handleFileUpload} className="hidden" /> 
+          </label>
         </div>
       </div>
 
@@ -1781,6 +1890,17 @@ export default function App() {
               {/* MOVED TRASH ICON HERE - FIXED OVERLAY */}
               <div ref={trashRef} className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}> <Trash2 size={32} /> <span className="text-xs font-bold mt-2"> {t.dropToDelete} </span> </div>
               
+              {/* NEW: Heads-Up "Enter Distance" Button for Calibration */}
+              {isCalibrating && !showInputModal && (
+                 <button 
+                   onClick={() => setShowInputModal(true)}
+                   className="absolute bottom-28 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-full font-bold shadow-lg flex items-center gap-2 transition-all hover:scale-105 animate-in fade-in slide-in-from-bottom-4"
+                 >
+                   <CheckCircle2 size={20} />
+                   {t.enterDistance}
+                 </button>
+              )}
+
               <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start justify-center p-4 relative ${styles.workspaceBg}`}>
                 {/* REMOVED OLD SVG RETICLE */}
                 {dragState === 'point' && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="13" cy="13" r="4" fill={activeObjectColor} stroke="white" strokeWidth="1.5" /> </svg> </div> )}
