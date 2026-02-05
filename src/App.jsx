@@ -1551,7 +1551,32 @@ export default function App() {
     svgClone.insertBefore(bgRect, svgClone.firstChild);
 
     svgClone.style.fontFamily = "Arial, Helvetica, sans-serif";
+
+    // --- 1. CALCULATE GRID BOUNDARIES FIRST (Moved Up) ---
+    // We need these dimensions to geometrically center the Y-axis label
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     
+    const gridLines = svgClone.querySelectorAll(".recharts-cartesian-grid line");
+    gridLines.forEach(l => { 
+      l.setAttribute("stroke", "#9ca3af"); 
+      l.removeAttribute("stroke-dasharray"); 
+
+      const x1 = parseFloat(l.getAttribute("x1"));
+      const x2 = parseFloat(l.getAttribute("x2"));
+      const y1 = parseFloat(l.getAttribute("y1"));
+      const y2 = parseFloat(l.getAttribute("y2"));
+      if (!isNaN(x1)) { minX = Math.min(minX, x1); maxX = Math.max(maxX, x1); }
+      if (!isNaN(x2)) { minX = Math.min(minX, x2); maxX = Math.max(maxX, x2); }
+      if (!isNaN(y1)) { minY = Math.min(minY, y1); maxY = Math.max(maxY, y1); }
+      if (!isNaN(y2)) { minY = Math.min(minY, y2); maxY = Math.max(maxY, y2); }
+    });
+
+    // Default fallbacks if grid is empty
+    if (minX === Infinity) { minX = 60; minY = 20; maxX = 740; maxY = 380; }
+
+    const chartMidY = (minY + maxY) / 2;
+
+    // --- 2. PROCESS TEXT ELEMENTS ---
     const texts = svgClone.querySelectorAll("text");
     texts.forEach(t => { 
       t.setAttribute("fill", "black"); 
@@ -1576,16 +1601,24 @@ export default function App() {
       if (t.textContent === labels[plotY]) {
         t.style.fontSize = "32px"; 
         t.style.fontWeight = "bold";
-        // Push Y label left (decrease dy because of rotation)
-        let currentDy = parseFloat(t.getAttribute("dy")) || 0;
-        t.setAttribute("dy", currentDy - 30);
-      }
-    });
+        
+        // --- FIX: GEOMETRIC CENTERING FOR Y-AXIS ---
+        // 1. Get current X position (distance from left)
+        const currentX = parseFloat(t.getAttribute("x")) || 20; 
+        
+        // 2. Force Y position to exact grid midpoint
+        t.setAttribute("y", chartMidY);
+        
+        // 3. Update rotation to pivot around the NEW center
+        // Standard SVG rotation is: rotate(deg, x, y)
+        t.setAttribute("transform", `rotate(-90, ${currentX}, ${chartMidY})`);
+        
+        // 4. Ensure visual centering
+        t.setAttribute("text-anchor", "middle");
 
-    const gridLines = svgClone.querySelectorAll(".recharts-cartesian-grid line");
-    gridLines.forEach(l => { 
-      l.setAttribute("stroke", "#9ca3af"); 
-      l.removeAttribute("stroke-dasharray"); 
+        // 5. Adjust padding (Push left away from axis)
+        t.setAttribute("dy", -40); // Increased spacing slightly for larger font
+      }
     });
 
     const axesLines = svgClone.querySelectorAll(".recharts-xAxis line, .recharts-yAxis line");
@@ -1606,19 +1639,7 @@ export default function App() {
         l.setAttribute("stroke-width", "2");
     });
 
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    
-    gridLines.forEach(line => {
-      const x1 = parseFloat(line.getAttribute("x1"));
-      const x2 = parseFloat(line.getAttribute("x2"));
-      const y1 = parseFloat(line.getAttribute("y1"));
-      const y2 = parseFloat(line.getAttribute("y2"));
-      if (!isNaN(x1)) { minX = Math.min(minX, x1); maxX = Math.max(maxX, x1); }
-      if (!isNaN(x2)) { minX = Math.min(minX, x2); maxX = Math.max(maxX, x2); }
-      if (!isNaN(y1)) { minY = Math.min(minY, y1); maxY = Math.max(maxY, y1); }
-      if (!isNaN(y2)) { minY = Math.min(minY, y2); maxY = Math.max(maxY, y2); }
-    });
-
+    // Draw Border Rect (using calculated dimensions)
     if (isFinite(minX) && isFinite(maxX) && isFinite(minY) && isFinite(maxY)) {
         const borderRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         borderRect.setAttribute("x", minX);
@@ -1629,9 +1650,6 @@ export default function App() {
         borderRect.setAttribute("stroke", "black");
         borderRect.setAttribute("stroke-width", "1");
         svgClone.appendChild(borderRect);
-    } else {
-        minX = 60; minY = 20; 
-        maxX = 740; maxY = 380;
     }
 
     const serializer = new XMLSerializer();
