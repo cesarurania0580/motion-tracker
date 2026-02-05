@@ -1,6 +1,6 @@
 /**
  * PhysTracker
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Cesar Cortes
  * Powered by: Gemini Pro AI
  * License: MIT
@@ -23,7 +23,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X, Languages, Coffee, Github, Mail, Axis3d } from 'lucide-react';
+import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X, Languages, Coffee, Github, Mail, Move, Menu } from 'lucide-react';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
 
 // --- HELPER: FORMAT TICKS DYNAMICALLY ---
@@ -130,7 +130,8 @@ const TRANSLATIONS = {
     // Link Buttons
     visitGithub: "Visit GitHub",
     sendFeedback: "Send Feedback",
-    buyCoffee: "Support Project"
+    buyCoffee: "Support Project",
+    moreOptions: "More Options"
   },
   es: {
     appTitle: "PhysTracker",
@@ -219,7 +220,8 @@ const TRANSLATIONS = {
     // Link Buttons
     visitGithub: "Ver en GitHub",
     sendFeedback: "Enviar Comentarios",
-    buyCoffee: "Apoyar Proyecto"
+    buyCoffee: "Apoyar Proyecto",
+    moreOptions: "Más Opciones"
   }
 };
 
@@ -285,16 +287,18 @@ export default function App() {
   
   // NEW: Language State
   const [language, setLanguage] = useState('en');
-  const t = TRANSLATIONS[language]; // Helper for current translations
+  // CRITICAL FIX: Fallback to English if language is invalid to prevent blank screen crash
+  const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
   // NEW: FPS State (Default 30)
   const [fps, setFps] = useState(30);
 
-  // NEW: Master Frame Counter (Digital Twin for Robust Stepping)
-  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
-
   // NEW: Logo Error State (Fallback for Canvas/Preview)
   const [logoError, setLogoError] = useState(false);
+
+  // NEW: Header Menu State
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   // NEW: Multi-Object State
   const [objects, setObjects] = useState([
@@ -381,6 +385,9 @@ export default function App() {
   const [isSettingOrigin, setIsSettingOrigin] = useState(false);
   const [origin, setOrigin] = useState(null); 
   const [originAngle, setOriginAngle] = useState(0); 
+
+  // NEW: Master Frame Counter (Digital Twin for Robust Stepping)
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
 
   const [isTracking, setIsTracking] = useState(false);
   // NEW: Reticle State for Phase 1 Step 2
@@ -490,7 +497,7 @@ export default function App() {
 
   const saveProject = () => {
     const stateToSave = {
-        meta: { version: "1.0.0", date: new Date().toISOString() }, // Version 1.0.0
+        meta: { version: "1.0.1", date: new Date().toISOString() }, // Version 1.0.1
         objects,
         activeObjId,
         calibrationPoints,
@@ -621,6 +628,20 @@ export default function App() {
         setReticlePos({ x: videoDims.w / 2, y: videoDims.h / 2 });
     }
   }, [isTracking, videoDims]);
+
+  // NEW: Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [menuRef]);
+
 
   // --- 2. UNIFIED RENDER LOOP (CANVAS-FIRST APPROACH) ---
   const renderFrame = useCallback(() => {
@@ -933,6 +954,7 @@ export default function App() {
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
     const hitRadius = 15 / zoom; 
     let isInteractiveTarget = false; // Flag to track if we hit something actionable
+    let newDragState = null; // NEW: Local tracker for immediate state logic
 
     // PRIORITY 1: RETICLE LOGIC
     if (!isCalibrating && isTracking && reticlePos) {
@@ -941,6 +963,7 @@ export default function App() {
 
       if (distToReticle < reticleHitRadius) {
           isInteractiveTarget = true;
+          newDragState = 'reticle';
           setDragState('reticle');
           dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
           dragOffsetRef.current = { x: reticlePos.x - x, y: reticlePos.y - y };
@@ -954,6 +977,7 @@ export default function App() {
         const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
         if (dist < hitRadius) {
           isInteractiveTarget = true;
+          newDragState = 'point';
           setDragState('point');
           setDraggedPointIndex(i);
           setMousePos({ x: e.clientX, y: e.clientY });
@@ -969,6 +993,7 @@ export default function App() {
         const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
         if (dist < hitRadius + 5/zoom) {
           isInteractiveTarget = true;
+          newDragState = 'calibration';
           setDragState('calibration');
           setDraggedPointIndex(i);
           setMousePos({ x: e.clientX, y: e.clientY });
@@ -982,6 +1007,7 @@ export default function App() {
       const distOrigin = Math.sqrt(Math.pow(x - origin.x, 2) + Math.pow(y - origin.y, 2));
       if (distOrigin < hitRadius) { 
           isInteractiveTarget = true;
+          newDragState = 'origin';
           setDragState('origin'); 
       } else {
           const handleDist = 100 / zoom; 
@@ -990,6 +1016,7 @@ export default function App() {
           const distHandle = Math.sqrt(Math.pow(x - handleX, 2) + Math.pow(y - handleY, 2));
           if (distHandle < hitRadius) { 
               isInteractiveTarget = true;
+              newDragState = 'rotate';
               setDragState('rotate'); 
           }
       }
@@ -1031,8 +1058,18 @@ export default function App() {
        e.currentTarget.setPointerCapture(e.pointerId);
        
        if (isSettingOrigin) {
-          setOrigin({ x, y }); setOriginAngle(0); setIsSettingOrigin(false); 
-          setDragState(null); // Reset immediate drag state since action is complete
+          // FIX: If we clicked the axes handle directly (newDragState is set locally), 
+          // do NOT kill the drag. Just exit setting mode.
+          // Using 'newDragState' instead of 'dragState' fixes the React state update lag.
+          if (newDragState) {
+             setIsSettingOrigin(false);
+          } else {
+             // We clicked empty space, so place the origin there.
+             setOrigin({ x, y }); 
+             setOriginAngle(0); 
+             setIsSettingOrigin(false); 
+             setDragState(null); // Ensure no residual drag state
+          }
        }
     } else {
        // We hit empty space.
@@ -1819,40 +1856,10 @@ export default function App() {
               </button>
           </div>
 
-          {/* NEW: FILE CONTROLS */}
-          <div className="flex items-center gap-2 border-l pl-4 ml-2 border-slate-600">
-             <button onClick={saveProject} className={`p-2 rounded transition ${styles.buttonSecondary}`} title={t.saveProject}>
-                <Save size={18} />
-             </button>
-             <label className={`p-2 rounded cursor-pointer transition ${styles.buttonSecondary}`} title={t.loadProject}>
-                <FolderOpen size={18} />
-                <input type="file" ref={fileInputRef} onChange={loadProject} accept=".json" className="hidden" />
-             </label>
-             <button onClick={clearProject} className={`p-2 rounded transition hover:text-red-400 ${styles.buttonSecondary}`} title={t.resetData}>
-                <RefreshCw size={18} />
-             </button>
-             {hasRestoredData && !videoSrc && (
-                 <span className="text-xs text-orange-400 animate-pulse font-semibold ml-2 flex items-center gap-1">
-                     <AlertCircle size={12} /> {t.waitingVideo}
-                 </span>
-             )}
-          </div>
         </div>
         
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center">
           
-          <button onClick={() => setShowAboutModal(true)} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title={t.about}>
-            <Info size={20} />
-          </button>
-
-          <button onClick={toggleTheme} className={`p-2 rounded-full transition ${styles.buttonSecondary}`} title={t.switchTheme}>
-            {isDark ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-
-          <button onClick={toggleLanguage} className={`p-2 rounded-full transition font-bold text-sm w-10 h-10 flex items-center justify-center ${styles.buttonSecondary}`} title="Switch Language">
-            {language === 'en' ? 'ES' : 'EN'}
-          </button>
-
           {viewMode === 'tracker' && (
             <>
               {/* UPDATED: Removed text spans, relying on title attributes for tooltips */}
@@ -1877,7 +1884,7 @@ export default function App() {
                   className={`flex items-center gap-2 px-3 py-2 rounded transition ${isSettingOrigin ? 'bg-blue-600 text-white' : styles.buttonSecondary}`}
                   title={origin ? t.moveOrigin : t.setOrigin}
               > 
-                  <Axis3d size={20} /> 
+                  <Move size={20} /> 
               </button>
 
               <button 
@@ -1897,6 +1904,54 @@ export default function App() {
               <Upload size={20} /> 
               <input type="file" accept="video/*" onChange={handleFileUpload} className="hidden" /> 
           </label>
+           
+           {/* Waiting for Video Alert (Moved here) */}
+           {hasRestoredData && !videoSrc && (
+                 <span className="text-xs text-orange-400 animate-pulse font-semibold flex items-center gap-1 hidden lg:flex">
+                     <AlertCircle size={16} /> {t.waitingVideo}
+                 </span>
+             )}
+
+          {/* NEW: More Options Dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button 
+              onClick={() => setIsMenuOpen(!isMenuOpen)} 
+              className={`p-2 rounded-full transition ${isMenuOpen ? 'bg-slate-200 dark:bg-slate-700' : styles.buttonSecondary}`}
+              title={t.moreOptions}
+            >
+              <Menu size={20} />
+            </button>
+            
+            {isMenuOpen && (
+              <div className={`absolute right-0 top-12 w-56 rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 ${styles.panel}`}>
+                <div className="p-1 flex flex-col gap-1">
+                   <button onClick={() => {saveProject(); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition ${styles.tableRow}`}>
+                      <Save size={16} className="text-blue-500"/> {t.saveProject}
+                   </button>
+                   <label className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition cursor-pointer ${styles.tableRow}`}>
+                      <FolderOpen size={16} className="text-green-500"/> {t.loadProject}
+                      <input type="file" ref={fileInputRef} onChange={(e) => {loadProject(e); setIsMenuOpen(false);}} accept=".json" className="hidden" />
+                   </label>
+                   <button onClick={() => {clearProject(); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500`}>
+                      <RefreshCw size={16} /> {t.resetData}
+                   </button>
+                   
+                   <div className={`h-px my-1 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                   
+                   <button onClick={() => {toggleTheme(); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition ${styles.tableRow}`}>
+                      {isDark ? <Sun size={16} className="text-yellow-400"/> : <Moon size={16} className="text-indigo-400"/>} {t.switchTheme}
+                   </button>
+                   <button onClick={() => {toggleLanguage(); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition ${styles.tableRow}`}>
+                      <Languages size={16} className="text-purple-500"/> {language === 'en' ? 'Español' : 'English'}
+                   </button>
+                   <button onClick={() => {setShowAboutModal(true); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition ${styles.tableRow}`}>
+                      <Info size={16} className="text-cyan-500"/> {t.about}
+                   </button>
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
 
@@ -1936,7 +1991,27 @@ export default function App() {
                   <div className="relative shadow-2xl origin-top-left bg-black mt-10 flex-none" ref={containerRef} style={{ width: Math.floor(videoDims.w * zoom), height: Math.floor(videoDims.h * zoom) }}>
                     {/* MEMOIZED VIDEO ELEMENT WITH GPU LAYER FORCE */}
                     {videoElement}
-                    <canvas ref={canvasRef} width={Math.floor(videoDims.w * zoom)} height={Math.floor(videoDims.h * zoom)} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 10, touchAction: 'none' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onMouseEnter={() => setIsHoveringCanvas(true)} onMouseLeave={() => setIsHoveringCanvas(false)} className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} />
+                    <canvas 
+                        ref={canvasRef} 
+                        width={Math.floor(videoDims.w * zoom)} 
+                        height={Math.floor(videoDims.h * zoom)} 
+                        style={{ 
+                            width: '100%', 
+                            height: '100%', 
+                            position: 'absolute', 
+                            top: 0, 
+                            left: 0, 
+                            zIndex: 10, 
+                            touchAction: 'pan-x pan-y' // UPDATED: Allow native panning
+                        }} 
+                        onPointerDown={handlePointerDown} 
+                        onPointerMove={handlePointerMove} 
+                        onPointerUp={handlePointerUp} 
+                        onPointerCancel={handlePointerUp} 
+                        onMouseEnter={() => setIsHoveringCanvas(true)} 
+                        onMouseLeave={() => setIsHoveringCanvas(false)} 
+                        className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} 
+                    />
                   </div>
                 ) : ( <div className={`text-center mt-20 ${styles.textSecondary}`}> <Upload size={48} className="mx-auto mb-4 opacity-50" /> <p>{t.uploadPrompt}</p> </div> )}
               </div>
@@ -2141,7 +2216,7 @@ export default function App() {
                 <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="grid grid-cols-[80px_1fr] gap-y-2 text-sm items-center">
                         <span className="opacity-60 font-semibold">{t.version}</span>
-                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.0</span>
+                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.1</span>
                         
                         <span className="opacity-60 font-semibold">{t.author}</span>
                         <span>Cesar Cortes</span>
