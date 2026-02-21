@@ -1,6 +1,6 @@
 /**
  * PhysTracker
- * Version: 1.0.1
+ * Version: 1.0.0
  * Author: Cesar Cortes
  * Powered by: Gemini Pro AI
  * License: MIT
@@ -429,6 +429,9 @@ export default function App() {
 
   // NEW: State to track if data was restored from persistence
   const [hasRestoredData, setHasRestoredData] = useState(false);
+  
+  // NEW: Ref for custom touch panning
+  const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   // --- GRAPH STATE ---
   const [plotX, setPlotX] = useState('time');
@@ -497,7 +500,7 @@ export default function App() {
 
   const saveProject = () => {
     const stateToSave = {
-        meta: { version: "1.0.1", date: new Date().toISOString() }, // Version 1.0.1
+        meta: { version: "1.0.0", date: new Date().toISOString() }, // Version 1.0.0
         objects,
         activeObjId,
         calibrationPoints,
@@ -947,19 +950,22 @@ export default function App() {
   const handlePointerDown = (e) => {
     if (!videoRef.current || showInputModal) return;
 
-    // --- TOUCH PANNING FIX ---
-    // We only prevent default (blocking scroll) if we are interacting with a specific tool.
-    // If we are just touching the background, we let the browser handle it (panning).
+    // --- CUSTOM TOUCH PANNING FIX ---
+    // We handle all touches instantly to avoid Safari's native scroll delay
     
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
-    const hitRadius = 15 / zoom; 
+    
+    // --- FAT FINGER DETECTION ---
+    const isTouch = e.pointerType === 'touch' || e.pointerType === 'pen';
+    const hitRadius = (isTouch ? 45 : 15) / zoom; 
+    const reticleHitRadius = (isTouch ? 80 : 60) / zoom; 
+
     let isInteractiveTarget = false; // Flag to track if we hit something actionable
     let newDragState = null; // NEW: Local tracker for immediate state logic
 
     // PRIORITY 1: RETICLE LOGIC
     if (!isCalibrating && isTracking && reticlePos) {
       const distToReticle = Math.sqrt(Math.pow(x - reticlePos.x, 2) + Math.pow(y - reticlePos.y, 2));
-      const reticleHitRadius = 60 / zoom; 
 
       if (distToReticle < reticleHitRadius) {
           isInteractiveTarget = true;
@@ -1025,42 +1031,14 @@ export default function App() {
     // 5. Origin Setting Mode (Always capture click)
     if (isSettingOrigin) {
         isInteractiveTarget = true; // We want to place the origin, not scroll
-        // Logic for setting origin moved below e.preventDefault() block
     }
-
-    // 6. Reticle Jump (Tap anywhere to move reticle)
-    // Only consider this "interactive" if we are NOT on a touch device wanting to scroll.
-    // For simplicity, we will assume if we didn't hit a specific target, we might be scrolling.
-    // BUT we need "Tap to Jump".
-    // Strategy: We allow the "Reticle Jump" ONLY if we preventDefault.
-    // If we want to allow scrolling, we must NOT set drag state yet.
-    
-    // REVISED STRATEGY:
-    // If we hit a known target (point, reticle, origin), we capture immediately.
-    // If we hit NOTHING:
-    //   - On Mouse: We capture immediately (reticle jump).
-    //   - On Touch: We DO NOT capture immediately. We let the browser decide if it's a scroll.
-    //     If it turns out to be a TAP (not a scroll), the `onClick` event would trigger, but Canvas doesn't have reliable onClick with complex pointers.
-    
-    // SIMPLIFIED APPROACH for usability:
-    // If we didn't hit anything actionable:
-    // We do NOTHING here. This allows the browser to scroll.
-    // However, this breaks "Tap empty space to move reticle".
-    
-    // COMPROMISE: "Tap to Jump" vs "Drag to Scroll".
-    // If we didn't hit a target, we assume the user might want to scroll.
-    // We will ONLY trigger "Reticle Jump" if `isInteractiveTarget` is true.
-    // This means on tablets, you must drag the reticle itself, you cannot tap empty space to warp it.
-    // This is a worthy trade-off for usable zooming/panning.
 
     if (isInteractiveTarget) {
        e.preventDefault(); // Stop scrolling, start app interaction
        e.currentTarget.setPointerCapture(e.pointerId);
        
        if (isSettingOrigin) {
-          // FIX: If we clicked the axes handle directly (newDragState is set locally), 
-          // do NOT kill the drag. Just exit setting mode.
-          // Using 'newDragState' instead of 'dragState' fixes the React state update lag.
+          // If we clicked the axes handle directly, do NOT kill the drag.
           if (newDragState) {
              setIsSettingOrigin(false);
           } else {
@@ -1068,14 +1046,26 @@ export default function App() {
              setOrigin({ x, y }); 
              setOriginAngle(0); 
              setIsSettingOrigin(false); 
-             setDragState(null); // Ensure no residual drag state
+             setDragState(null); 
           }
        }
     } else {
        // We hit empty space.
-       // If we are on a desktop (mouse), we might want to allow "Reticle Jump".
-       // If pointerType is 'mouse', we can be aggressive.
-       if (e.pointerType === 'mouse' && !isCalibrating && isTracking && reticlePos) {
+       if (isTouch) {
+           // On Touch: Start Custom Panning Engine
+           e.preventDefault();
+           e.currentTarget.setPointerCapture(e.pointerId);
+           setDragState('pan');
+           if (scrollContainerRef.current) {
+               panStartRef.current = {
+                   x: e.clientX,
+                   y: e.clientY,
+                   scrollLeft: scrollContainerRef.current.scrollLeft,
+                   scrollTop: scrollContainerRef.current.scrollTop
+               };
+           }
+       } else if (e.pointerType === 'mouse' && !isCalibrating && isTracking && reticlePos) {
+           // On Mouse: Reticle Jump
            e.preventDefault();
            e.currentTarget.setPointerCapture(e.pointerId);
            setDragState('reticle_move_jump');
@@ -1083,9 +1073,6 @@ export default function App() {
            dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
            setMousePos({ x: e.clientX, y: e.clientY });
        }
-       // If pointerType is 'touch' or 'pen', we DO NOTHING.
-       // This allows the default "pan/scroll" gesture to work.
-       // User must grab the reticle directly to move it on touch.
     }
   };
 
@@ -1096,8 +1083,17 @@ export default function App() {
     }
     
     if (!dragState) return;
-    
-    // ... existing pointer move logic ...
+
+    // --- CUSTOM PANNING LOGIC ---
+    if (dragState === 'pan') {
+        if (scrollContainerRef.current) {
+            const dx = e.clientX - panStartRef.current.x;
+            const dy = e.clientY - panStartRef.current.y;
+            scrollContainerRef.current.scrollLeft = panStartRef.current.scrollLeft - dx;
+            scrollContainerRef.current.scrollTop = panStartRef.current.scrollTop - dy;
+        }
+        return; // Skip physics math when just panning
+    }
     
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
 
@@ -2002,7 +1998,7 @@ export default function App() {
                             top: 0, 
                             left: 0, 
                             zIndex: 10, 
-                            touchAction: 'pan-x pan-y' // UPDATED: Allow native panning
+                            touchAction: 'none' // TOTAL LOCKDOWN: Bypasses Safari delay entirely
                         }} 
                         onPointerDown={handlePointerDown} 
                         onPointerMove={handlePointerMove} 
@@ -2010,7 +2006,7 @@ export default function App() {
                         onPointerCancel={handlePointerUp} 
                         onMouseEnter={() => setIsHoveringCanvas(true)} 
                         onMouseLeave={() => setIsHoveringCanvas(false)} 
-                        className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} 
+                        className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'pan' ? 'cursor-grabbing' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} 
                     />
                   </div>
                 ) : ( <div className={`text-center mt-20 ${styles.textSecondary}`}> <Upload size={48} className="mx-auto mb-4 opacity-50" /> <p>{t.uploadPrompt}</p> </div> )}
@@ -2216,7 +2212,7 @@ export default function App() {
                 <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="grid grid-cols-[80px_1fr] gap-y-2 text-sm items-center">
                         <span className="opacity-60 font-semibold">{t.version}</span>
-                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.1</span>
+                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.0</span>
                         
                         <span className="opacity-60 font-semibold">{t.author}</span>
                         <span>Cesar Cortes</span>
