@@ -2082,7 +2082,13 @@ export default function App() {
                         className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'pan' ? 'cursor-grabbing' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} 
                     />
                   </div>
-                ) : ( <div className={`text-center mt-20 ${styles.textSecondary}`}> <Upload size={48} className="mx-auto mb-4 opacity-50" /> <p>{t.uploadPrompt}</p> </div> )}
+                ) : ( 
+                  // FIX: Added 'w-full' here so the empty state text expands and centers itself correctly
+                  <div className={`w-full text-center mt-20 ${styles.textSecondary}`}> 
+                    <Upload size={48} className="mx-auto mb-4 opacity-50" /> 
+                    <p>{t.uploadPrompt}</p> 
+                  </div> 
+                )}
               </div>
               <div className={`h-20 border-t flex items-center justify-center gap-8 px-6 shrink-0 z-30 ${styles.panel}`}>
                  <button onClick={undoLastPoint} disabled={points.length === 0} className={`p-3 rounded-full transition disabled:opacity-30 ${styles.buttonSecondary}`} title={t.undoLast}> <Undo2 size={20} /> </button>
