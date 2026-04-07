@@ -1,6 +1,6 @@
 /**
  * PhysTracker
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Cesar Cortes
  * Powered by: Gemini Pro AI
  * License: MIT
@@ -89,11 +89,16 @@ const TRANSLATIONS = {
     none: "None",
     linear: "Linear (mx + b)",
     quadratic: "Quadratic (Ax² + Bx + C)",
+    sinusoidal: "Sinusoidal (A sin(Bx + C) + D)",
     slope: "Slope (m)",
     intercept: "Intercept (b)",
     aTerm: "A term",
     bTerm: "B term",
     cTerm: "C term",
+    amplitude: "Amplitude (A)",
+    frequency: "Angular Freq (B)",
+    phase: "Phase Shift (C)",
+    offset: "Vertical Shift (D)",
     legendPos: "Legend Position (Export)",
     topLeft: "Top Left",
     topRight: "Top Right",
@@ -179,11 +184,16 @@ const TRANSLATIONS = {
     none: "Ninguno",
     linear: "Lineal (mx + b)",
     quadratic: "Cuadrática (Ax² + Bx + C)",
+    sinusoidal: "Sinusoidal (A sen(Bx + C) + D)",
     slope: "Pendiente (m)",
     intercept: "Intersección (b)",
     aTerm: "Término A",
     bTerm: "Término B",
     cTerm: "Término C",
+    amplitude: "Amplitud (A)",
+    frequency: "Frec. Angular (B)",
+    phase: "Desfase (C)",
+    offset: "Desplaz. Vertical (D)",
     legendPos: "Posición de Leyenda (Exportar)",
     topLeft: "Arriba Izquierda",
     topRight: "Arriba Derecha",
@@ -500,7 +510,7 @@ export default function App() {
 
   const saveProject = () => {
     const stateToSave = {
-        meta: { version: "1.0.0", date: new Date().toISOString() }, // Version 1.0.0
+        meta: { version: "1.0.1", date: new Date().toISOString() }, // Version 1.0.1
         objects,
         activeObjId,
         calibrationPoints,
@@ -1501,7 +1511,7 @@ export default function App() {
         const intercept = (sumY - slope * sumX) / n;
         result = { 
             type: 'Linear', 
-            text: `y = ${slope.toFixed(4)}x + ${intercept.toFixed(4)}`, 
+            text: `y = ${slope.toFixed(4)}x ${intercept >= 0 ? '+' : '-'} ${Math.abs(intercept).toFixed(4)}`, 
             fn: (x) => slope * x + intercept, 
             params: { m: slope, b: intercept } 
         };
@@ -1516,11 +1526,75 @@ export default function App() {
           const [a, b, c] = res;
           result = { 
             type: 'Quadratic', 
-            text: `y = ${a.toFixed(4)}x² + ${b.toFixed(4)}x + ${c.toFixed(4)}`, 
+            text: `y = ${a.toFixed(4)}x² ${b >= 0 ? '+' : '-'} ${Math.abs(b).toFixed(4)}x ${c >= 0 ? '+' : '-'} ${Math.abs(c).toFixed(4)}`, 
             fn: (x) => a * x * x + b * x + c, 
             params: { A: a, B: b, C: c } 
           };
       }
+    }
+    else if (fitModel === 'sinusoidal' && n > 3) {
+      // NEW: HEURISTIC SINUSOIDAL ESTIMATOR
+      const yMax = Math.max(...yData);
+      const yMin = Math.min(...yData);
+      const D = (yMax + yMin) / 2;
+      const A = (yMax - yMin) / 2;
+
+      // 1. Estimate Period (T) via Zero-Crossings
+      let crosses = [];
+      for(let i = 1; i < n; i++) {
+          const y1 = yData[i-1] - D;
+          const y2 = yData[i] - D;
+          if(y1 * y2 <= 0 && y1 !== y2) { // Sign change
+              const dx = xData[i] - xData[i-1];
+              const dy = y2 - y1;
+              const xCross = xData[i-1] - y1 * (dx / dy); // Linear interpolation
+              crosses.push(xCross);
+          }
+      }
+
+      let T;
+      if (crosses.length >= 2) {
+          let sumDiff = 0;
+          for(let i=1; i<crosses.length; i++) sumDiff += (crosses[i] - crosses[i-1]);
+          T = 2 * (sumDiff / (crosses.length - 1)); // Distance between crossings is half a period
+      } else {
+          // Fallback: Max to Min distance
+          const xMax = xData[yData.indexOf(yMax)];
+          const xMin = xData[yData.indexOf(yMin)];
+          T = 2 * Math.abs(xMax - xMin);
+          if (T === 0) T = 1; // Prevent division by zero
+      }
+
+      const B_est = (2 * Math.PI) / T;
+
+      // 2. Grid Search to find Phase (C) and fine-tune Frequency (B)
+      let bestB = B_est;
+      let bestC = 0;
+      let minError = Infinity;
+
+      // Sweep B slightly around estimate, and sweep C across a full cycle
+      for(let b_mult = 0.8; b_mult <= 1.2; b_mult += 0.05) {
+          const testB = B_est * b_mult;
+          for(let c = -Math.PI; c <= Math.PI; c += 0.1) {
+              let error = 0;
+              for(let i=0; i<n; i++) {
+                  const pred = A * Math.sin(testB * xData[i] + c) + D;
+                  error += Math.pow(yData[i] - pred, 2);
+              }
+              if (error < minError) {
+                  minError = error;
+                  bestB = testB;
+                  bestC = c;
+              }
+          }
+      }
+
+      result = {
+          type: 'Sinusoidal',
+          text: `y = ${A.toFixed(4)}sin(${bestB.toFixed(4)}x ${bestC >= 0 ? '+' : '-'} ${Math.abs(bestC).toFixed(4)}) ${D >= 0 ? '+' : '-'} ${Math.abs(D).toFixed(4)}`,
+          fn: (x) => A * Math.sin(bestB * x + bestC) + D,
+          params: { A: A, B: bestB, C: bestC, D: D }
+      };
     }
 
     if (result) {
@@ -1530,7 +1604,8 @@ export default function App() {
             const pred = result.fn(d[plotX]);
             return acc + Math.pow(d[plotY] - pred, 2);
         }, 0);
-        const r2 = 1 - (ssRes / ssTot);
+        // Protect against perfectly flat lines causing NaN R2
+        const r2 = ssTot === 0 ? 1 : (1 - (ssRes / ssTot));
         result.r2 = r2;
     }
 
@@ -1710,7 +1785,9 @@ export default function App() {
         const isPosition = ['x', 'y'].includes(plotY);
         const yVar = isVelocity ? 'v' : (plotY === 'x' ? 'x' : 'y');
         const xVar = plotX === 'time' ? 't' : 'x';
-        const modelName = fitEquation?.type === 'Linear' ? "Linear Regression" : (fitEquation?.type === 'Quadratic' ? "Quadratic Fit" : "Plot");
+        const modelName = fitEquation?.type === 'Linear' ? "Linear Regression" : 
+                          (fitEquation?.type === 'Quadratic' ? "Quadratic Fit" : 
+                          (fitEquation?.type === 'Sinusoidal' ? "Sinusoidal Fit" : "Plot"));
         
         ctx.font = "bold 36px Arial"; // Bigger Title
         ctx.fillStyle = "black";
@@ -1723,8 +1800,8 @@ export default function App() {
 
         if (fitEquation && legendPosition !== 'none') {
             const padding = 20;
-            const boxW = 400; // Slightly wider for bigger text
-            const boxH = 150; // Slightly taller
+            const boxW = 480; // WIDENED for Sinusoidal Fit Equations
+            const boxH = 150; 
 
             // Default Top Left (relative to grid)
             let boxX = leftMargin + minX + padding;
@@ -1780,11 +1857,7 @@ export default function App() {
             ctx.setLineDash([]); 
             
             let equationText = fitEquation.text.replace('y', yVar).replace(/x/g, xVar);
-            if (fitEquation.type === 'Linear') {
-               equationText = `${yVar} = ${fitEquation.params.m.toFixed(4)}${xVar} + ${fitEquation.params.b.toFixed(4)}`;
-            } else if (fitEquation.type === 'Quadratic') {
-               equationText = `${yVar} = ${fitEquation.params.A.toFixed(4)}${xVar}² + ${fitEquation.params.B.toFixed(4)}${xVar} + ${fitEquation.params.C.toFixed(4)}`;
-            }
+            
             ctx.fillText(equationText, boxX + 50, boxY + 100);
 
             ctx.fillText(`R² = ${fitEquation.r2.toFixed(4)}`, boxX + 50, boxY + 130); 
@@ -1970,7 +2043,7 @@ export default function App() {
                  </button>
               )}
 
-              <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start justify-center p-4 relative ${styles.workspaceBg}`}>
+              <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start p-4 relative ${styles.workspaceBg}`}>
                 {/* REMOVED OLD SVG RETICLE */}
                 {dragState === 'point' && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="13" cy="13" r="4" fill={activeObjectColor} stroke="white" strokeWidth="1.5" /> </svg> </div> )}
                 {dragState === 'calibration' && ( <div className="fixed z-[100] w-12 h-12 rounded-full border-4 border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.8)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center" style={{ left: mousePos.x, top: mousePos.y }}> <div className="w-1.5 h-1.5 bg-green-400 rounded-full" /> </div> )}
@@ -1984,7 +2057,7 @@ export default function App() {
                 {videoSrc ? (
                   // CANVAS-FIRST RENDER: Video is HIDDEN (opacity 0), Canvas draws the frame
                   // Added flex-none to prevent aspect ratio distortion during zoom
-                  <div className="relative shadow-2xl origin-top-left bg-black mt-10 flex-none" ref={containerRef} style={{ width: Math.floor(videoDims.w * zoom), height: Math.floor(videoDims.h * zoom) }}>
+                  <div className="relative shadow-2xl origin-top-left bg-black mt-10 flex-none mx-auto" ref={containerRef} style={{ width: Math.floor(videoDims.w * zoom), height: Math.floor(videoDims.h * zoom) }}>
                     {/* MEMOIZED VIDEO ELEMENT WITH GPU LAYER FORCE */}
                     {videoElement}
                     <canvas 
@@ -2132,6 +2205,7 @@ export default function App() {
                       <option value="none">{t.none}</option>
                       <option value="linear">{t.linear}</option>
                       <option value="quadratic">{t.quadratic}</option>
+                      <option value="sinusoidal">{t.sinusoidal}</option>
                     </select>
                  </div>
                </div>
@@ -2144,12 +2218,19 @@ export default function App() {
                           <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.slope}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.m.toFixed(4)}</span></div>
                           <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.intercept}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.b.toFixed(4)}</span></div>
                         </>
-                      ) : (
+                      ) : fitEquation.type === 'Quadratic' ? (
                         <>
                           <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.aTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
                           <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.bTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
                           <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.cTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
                         </>
+                      ) : (
+                         <>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.amplitude}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.frequency}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.phase}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
+                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.offset}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.D.toFixed(4)}</span></div>
+                         </>
                       )}
                       
                       <div className="flex justify-between items-center pt-2 border-t border-slate-700/50">
@@ -2212,7 +2293,7 @@ export default function App() {
                 <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="grid grid-cols-[80px_1fr] gap-y-2 text-sm items-center">
                         <span className="opacity-60 font-semibold">{t.version}</span>
-                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.0</span>
+                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.1</span>
                         
                         <span className="opacity-60 font-semibold">{t.author}</span>
                         <span>Cesar Cortes</span>
