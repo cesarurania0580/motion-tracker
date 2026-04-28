@@ -82,6 +82,7 @@ const TRANSLATIONS = {
     clearData: "Clear Data",
     downloadCSV: "Download CSV",
     noData: "No data points yet for Object",
+    noDataCOM: "Track both A and B to see Center of Mass.",
     yAxis: "Y-Axis",
     xAxis: "X-Axis",
     curveFitting: "Curve Fitting",
@@ -109,6 +110,9 @@ const TRANSLATIONS = {
     exportData: "Export Data (CSV)",
     objectA: "Object A",
     objectB: "Object B",
+    centerOfMass: "Center of Mass",
+    comShort: "COM",
+    massLabel: "Mass",
     about: "About PhysTracker",
     switchTheme: "Switch Theme",
     version: "Version",
@@ -132,6 +136,10 @@ const TRANSLATIONS = {
     // NEW TRANSLATIONS
     fpsLabel: "Frame Rate (FPS)",
     fpsTooltip: "Set to 60 for high-speed videos",
+    dataRange: "Data Range",
+    start: "Start",
+    end: "End",
+    reset: "Reset",
     // Link Buttons
     visitGithub: "Visit GitHub",
     sendFeedback: "Send Feedback",
@@ -177,6 +185,7 @@ const TRANSLATIONS = {
     clearData: "Borrar Datos",
     downloadCSV: "Descargar CSV",
     noData: "Aún no hay datos para el Objeto",
+    noDataCOM: "Rastrea A y B para ver el Centro de Masa.",
     yAxis: "Eje Y",
     xAxis: "Eje X",
     curveFitting: "Ajuste de Curva",
@@ -204,6 +213,9 @@ const TRANSLATIONS = {
     exportData: "Exportar Datos (CSV)",
     objectA: "Objeto A",
     objectB: "Objeto B",
+    centerOfMass: "Centro de Masa",
+    comShort: "CDM",
+    massLabel: "Masa",
     about: "Acerca de PhysTracker",
     switchTheme: "Cambiar Tema",
     version: "Versión",
@@ -227,6 +239,10 @@ const TRANSLATIONS = {
     // NEW TRANSLATIONS
     fpsLabel: "Velocidad (FPS)",
     fpsTooltip: "Usar 60 para videos de alta velocidad",
+    dataRange: "Rango (Tiempo)",
+    start: "Inicio",
+    end: "Fin",
+    reset: "Reiniciar",
     // Link Buttons
     visitGithub: "Ver en GitHub",
     sendFeedback: "Enviar Comentarios",
@@ -310,21 +326,42 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  // NEW: Multi-Object State
+  // NEW: Multi-Object State with Mass
   const [objects, setObjects] = useState([
-    { id: 'A', name: 'Object A', color: '#ef4444', points: [] }, // Red
-    { id: 'B', name: 'Object B', color: '#3b82f6', points: [] }  // Blue
+    { id: 'A', name: 'Object A', color: '#ef4444', points: [], mass: 1 }, // Red
+    { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }  // Blue
   ]);
   const [activeObjId, setActiveObjId] = useState('A');
 
-  // DERIVED STATE: 'points' acts as a proxy for the active object's points
-  // This ensures all existing logic (math, rendering, graphing) works without massive refactoring
+  // DERIVED STATE: 'points' acts as a proxy for the active object's points OR the calculated COM
   const points = useMemo(() => {
+    if (activeObjId === 'COM') {
+      const objA = objects.find(o => o.id === 'A') || { points: [], mass: 1 };
+      const objB = objects.find(o => o.id === 'B') || { points: [], mass: 1 };
+      const mA = typeof objA.mass === 'number' ? objA.mass : 1;
+      const mB = typeof objB.mass === 'number' ? objB.mass : 1;
+      const comPoints = [];
+      
+      // Match points by timestamp to calculate COM
+      objA.points.forEach(pA => {
+        const pB = objB.points.find(pb => Math.abs(pb.time - pA.time) < 0.005);
+        if (pB) {
+          comPoints.push({
+            id: `com-${pA.time}`,
+            time: pA.time,
+            x: (mA * pA.x + mB * pB.x) / (mA + mB),
+            y: (mA * pA.y + mB * pB.y) / (mA + mB)
+          });
+        }
+      });
+      return comPoints;
+    }
     return objects.find(o => o.id === activeObjId)?.points || [];
   }, [objects, activeObjId]);
 
   // PROXY SETTER: Updates only the active object within the objects array
   const setPoints = useCallback((newPointsInput) => {
+    if (activeObjId === 'COM') return; // Cannot directly add points to the virtual COM object
     setObjects(prevObjects => {
       return prevObjects.map(obj => {
         if (obj.id !== activeObjId) return obj;
@@ -339,7 +376,10 @@ export default function App() {
     });
   }, [activeObjId]);
 
-  const activeObjectColor = useMemo(() => objects.find(o => o.id === activeObjId)?.color || '#ef4444', [objects, activeObjId]);
+  const activeObjectColor = useMemo(() => {
+    if (activeObjId === 'COM') return '#a855f7'; // Purple for COM
+    return objects.find(o => o.id === activeObjId)?.color || '#ef4444';
+  }, [objects, activeObjId]);
 
   const [videoSrc, setVideoSrc] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -384,6 +424,10 @@ export default function App() {
   // Analysis State
   const [fitModel, setFitModel] = useState('none'); 
   const [legendPosition, setLegendPosition] = useState('top-left');
+
+  // NEW: Data Cropping State
+  const [cropStart, setCropStart] = useState('');
+  const [cropEnd, setCropEnd] = useState('');
 
   const [isCalibrating, setIsCalibrating] = useState(false); 
   const [calibrationPoints, setCalibrationPoints] = useState([]); 
@@ -456,14 +500,15 @@ export default function App() {
         try {
             const data = JSON.parse(savedData);
             
-            // MIGRATION LOGIC: Handle old saves with single 'points'
+            // MIGRATION LOGIC: Handle old saves with single 'points' and add default mass
             if (data.objects) {
-                setObjects(data.objects);
+                const migratedObjects = data.objects.map(o => ({ ...o, mass: o.mass !== undefined ? o.mass : 1 }));
+                setObjects(migratedObjects);
                 if (data.activeObjId) setActiveObjId(data.activeObjId);
             } else if (data.points) {
                 setObjects([
-                    { id: 'A', name: 'Object A', color: '#ef4444', points: data.points },
-                    { id: 'B', name: 'Object B', color: '#3b82f6', points: [] }
+                    { id: 'A', name: 'Object A', color: '#ef4444', points: data.points, mass: 1 },
+                    { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
                 ]);
             }
 
@@ -483,6 +528,8 @@ export default function App() {
             if (data.viewMode) setViewMode(data.viewMode);
             if (data.language) setLanguage(data.language); 
             if (data.fps) setFps(data.fps); // Restore FPS
+            if (data.cropStart !== undefined) setCropStart(data.cropStart);
+            if (data.cropEnd !== undefined) setCropEnd(data.cropEnd);
         } catch (e) {
             console.error("Failed to restore autosave", e);
         }
@@ -503,10 +550,12 @@ export default function App() {
         uncertaintyPx,
         viewMode,
         language,
-        fps // Save FPS
+        fps, // Save FPS
+        cropStart,
+        cropEnd
     };
     localStorage.setItem('physTracker_autosave', JSON.stringify(stateToSave));
-  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode, language, fps]);
+  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode, language, fps, cropStart, cropEnd]);
 
   const saveProject = () => {
     const stateToSave = {
@@ -521,7 +570,9 @@ export default function App() {
         fitModel,
         uncertaintyPx,
         language,
-        fps // Save FPS
+        fps, // Save FPS
+        cropStart,
+        cropEnd
     };
     const blob = new Blob([JSON.stringify(stateToSave, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -545,12 +596,13 @@ export default function App() {
               
               // MIGRATION LOGIC
               if (data.objects) {
-                  setObjects(data.objects);
+                  const migratedObjects = data.objects.map(o => ({ ...o, mass: o.mass !== undefined ? o.mass : 1 }));
+                  setObjects(migratedObjects);
                   setActiveObjId(data.activeObjId || 'A');
               } else {
                   setObjects([
-                    { id: 'A', name: 'Object A', color: '#ef4444', points: data.points || [] },
-                    { id: 'B', name: 'Object B', color: '#3b82f6', points: [] }
+                    { id: 'A', name: 'Object A', color: '#ef4444', points: data.points || [], mass: 1 },
+                    { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
                   ]);
                   setActiveObjId('A');
               }
@@ -566,6 +618,8 @@ export default function App() {
               setVideoSrc(null); 
               if (data.language) setLanguage(data.language);
               if (data.fps) setFps(data.fps); // Load FPS
+              setCropStart(data.cropStart || '');
+              setCropEnd(data.cropEnd || '');
               
               alert("Project loaded successfully. Please upload the corresponding video file.");
           } catch (err) {
@@ -596,8 +650,8 @@ export default function App() {
       if (!hasRestoredData) {
           // Reset both objects
           setObjects([
-            { id: 'A', name: 'Object A', color: '#ef4444', points: [] },
-            { id: 'B', name: 'Object B', color: '#3b82f6', points: [] }
+            { id: 'A', name: 'Object A', color: '#ef4444', points: [], mass: 1 },
+            { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
           ]);
           setCalibrationPoints([]);
           setPixelsPerMeter(null);
@@ -625,8 +679,21 @@ export default function App() {
       setCurrentTime(0);
       setCurrentFrameIndex(0); // Reset Frame Counter
       setViewMode('tracker');
+      setCropStart(''); // Reset crop
+      setCropEnd('');
+      if (activeObjId === 'COM') setActiveObjId('A'); // Reset to safe object
   }
   };
+
+  // NEW: Object Switcher Handler
+  const handleObjectSwitch = useCallback((id) => {
+      setActiveObjId(id);
+      if (id === 'COM') {
+          setIsTracking(false);
+          setDragState(null);
+          setDraggedPointIndex(null);
+      }
+  }, []);
 
   useEffect(() => {
     if (videoRef.current && videoSrc) {
@@ -863,12 +930,12 @@ export default function App() {
       drawPointMarker(point.x, point.y, isDraggingThis, index + 1);
     });
     
-    // NEW: Render Reticle if Tracking
-    if (isTracking && reticlePos) {
+    // NEW: Render Reticle if Tracking (Disabled for COM)
+    if (isTracking && reticlePos && activeObjId !== 'COM') {
         drawReticle(reticlePos.x, reticlePos.y, dragState === 'reticle' || dragState === 'reticle_move_jump');
     }
 
-  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor, t]);
+  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor, t, activeObjId]);
 
   // --- 3. TRIGGER RENDER LOOP (UPDATED: FRAME SYNC) ---
   useEffect(() => {
@@ -974,7 +1041,7 @@ export default function App() {
     let newDragState = null; // NEW: Local tracker for immediate state logic
 
     // PRIORITY 1: RETICLE LOGIC
-    if (!isCalibrating && isTracking && reticlePos) {
+    if (!isCalibrating && isTracking && reticlePos && activeObjId !== 'COM') {
       const distToReticle = Math.sqrt(Math.pow(x - reticlePos.x, 2) + Math.pow(y - reticlePos.y, 2));
 
       if (distToReticle < reticleHitRadius) {
@@ -987,7 +1054,7 @@ export default function App() {
     }
 
     // 2. Check Existing Points
-    if (!isInteractiveTarget) {
+    if (!isInteractiveTarget && activeObjId !== 'COM') {
       for (let i = points.length - 1; i >= 0; i--) {
         const p = points[i];
         const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
@@ -1074,7 +1141,7 @@ export default function App() {
                    scrollTop: scrollContainerRef.current.scrollTop
                };
            }
-       } else if (e.pointerType === 'mouse' && !isCalibrating && isTracking && reticlePos) {
+       } else if (e.pointerType === 'mouse' && !isCalibrating && isTracking && reticlePos && activeObjId !== 'COM') {
            // On Mouse: Reticle Jump
            e.preventDefault();
            e.currentTarget.setPointerCapture(e.pointerId);
@@ -1113,7 +1180,7 @@ export default function App() {
       const dx = x - origin.x;
       const dy = y - origin.y;
       setOriginAngle(Math.atan2(dy, dx));
-    } else if (dragState === 'point' && draggedPointIndex !== null) {
+    } else if (dragState === 'point' && draggedPointIndex !== null && activeObjId !== 'COM') {
       const updatedPoints = [...points];
       updatedPoints[draggedPointIndex] = { ...updatedPoints[draggedPointIndex], x, y };
       setPoints(updatedPoints);
@@ -1153,7 +1220,7 @@ export default function App() {
         const dt = Date.now() - dragStartRef.current.time;
         
         // Threshold: If moved less than 10 pixels and short duration, treat as TAP
-        if (dist < 10) {
+        if (dist < 10 && activeObjId !== 'COM') {
             // FIRE! Record Point
             const time = videoRef.current.currentTime;
             setPoints([...points, { id: Date.now(), x: reticlePos.x, y: reticlePos.y, time }]);
@@ -1161,7 +1228,7 @@ export default function App() {
             // Reticle stays where it is, ready for next adjustment
         }
     } else if (dragState === 'point') {
-      if (isHoveringTrash) {
+      if (isHoveringTrash && activeObjId !== 'COM') {
         const newPoints = points.filter((_, i) => i !== draggedPointIndex);
         setPoints(newPoints);
       }
@@ -1453,11 +1520,21 @@ export default function App() {
   }, [points, origin, originAngle, pixelsPerMeter, zeroTime, uncertaintyPx, startTime, fps]);
 
   const activeData = useMemo(() => {
-      if (['vx', 'vy'].includes(plotY)) {
-          return velocityData;
+      let data = ['vx', 'vy'].includes(plotY) ? velocityData : positionData;
+      
+      // NEW: Apply Data Cropping Filter
+      const start = parseFloat(cropStart);
+      const end = parseFloat(cropEnd);
+      
+      if (!isNaN(start)) {
+          data = data.filter(d => d.time >= start);
       }
-      return positionData;
-  }, [plotY, positionData, velocityData]);
+      if (!isNaN(end)) {
+          data = data.filter(d => d.time <= end);
+      }
+
+      return data;
+  }, [plotY, positionData, velocityData, cropStart, cropEnd]);
 
   // --- SCALE CALCULATION ---
   const xScale = useMemo(() => {
@@ -1915,13 +1992,16 @@ export default function App() {
             <button onClick={() => setViewMode('analysis')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'analysis' ? (isDark ? 'bg-slate-700 text-blue-400' : 'bg-white shadow-sm text-blue-600') : styles.textSecondary + ' hover:' + styles.text}`}>{t.analysisMode}</button>
           </div>
           
-          {/* NEW: Object Switcher */}
+          {/* NEW: Object Switcher including COM */}
           <div className={`flex rounded p-1 border ml-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
-              <button onClick={() => setActiveObjId('A')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'A' ? 'bg-red-500 text-white shadow-sm' : styles.textSecondary}`}>
+              <button onClick={() => handleObjectSwitch('A')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'A' ? 'bg-red-500 text-white shadow-sm' : styles.textSecondary}`}>
                   <Users size={14}/> {t.objectA}
               </button>
-              <button onClick={() => setActiveObjId('B')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'B' ? 'bg-blue-500 text-white shadow-sm' : styles.textSecondary}`}>
+              <button onClick={() => handleObjectSwitch('B')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'B' ? 'bg-blue-500 text-white shadow-sm' : styles.textSecondary}`}>
                   <Users size={14}/> {t.objectB}
+              </button>
+              <button onClick={() => handleObjectSwitch('COM')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'COM' ? 'bg-purple-500 text-white shadow-sm' : styles.textSecondary}`}>
+                  <Activity size={14}/> {t.comShort}
               </button>
           </div>
 
@@ -1931,11 +2011,11 @@ export default function App() {
           
           {viewMode === 'tracker' && (
             <>
-              {/* UPDATED: Removed text spans, relying on title attributes for tooltips */}
               <button 
                   onClick={() => { setIsTracking(!isTracking); setIsSettingOrigin(false); setIsCalibrating(false); }} 
-                  className={`flex items-center gap-2 px-3 py-2 rounded transition ${isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}
-                  title={isTracking ? t.stopTracking : t.startTracking}
+                  disabled={activeObjId === 'COM'}
+                  className={`flex items-center gap-2 px-3 py-2 rounded transition ${activeObjId === 'COM' ? 'opacity-50 cursor-not-allowed ' + styles.buttonSecondary : isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}
+                  title={activeObjId === 'COM' ? t.comShort : (isTracking ? t.stopTracking : t.startTracking)}
               > 
                   <Target size={20} /> 
               </button>
@@ -2091,7 +2171,7 @@ export default function App() {
                 )}
               </div>
               <div className={`h-20 border-t flex items-center justify-center gap-8 px-6 shrink-0 z-30 ${styles.panel}`}>
-                 <button onClick={undoLastPoint} disabled={points.length === 0} className={`p-3 rounded-full transition disabled:opacity-30 ${styles.buttonSecondary}`} title={t.undoLast}> <Undo2 size={20} /> </button>
+                 <button onClick={undoLastPoint} disabled={points.length === 0 || activeObjId === 'COM'} className={`p-3 rounded-full transition disabled:opacity-30 ${styles.buttonSecondary}`} title={t.undoLast}> <Undo2 size={20} /> </button>
                  <div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'}`}> 
                     <button onClick={stepBackward} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame}> <SkipBack size={20} /> </button> 
                     <button onClick={togglePlay} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-900/20" title={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button> 
@@ -2103,9 +2183,9 @@ export default function App() {
             </div>
 
             <div className={`w-96 border-l flex flex-col transition-all z-20 shrink-0 ${styles.panel}`}>
-              <div className={`p-4 border-b flex justify-between items-center ${styles.panelHeader} ${styles.panelBorder}`}> <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}><Table size={16} /> {t.dataTable} ({activeObjId})</h2> </div>
+              <div className={`p-4 border-b flex justify-between items-center ${styles.panelHeader} ${styles.panelBorder}`}> <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}><Table size={16} /> {t.dataTable} ({activeObjId === 'COM' ? t.comShort : activeObjId})</h2> </div>
               <div className={`p-4 border-b flex flex-col gap-4 ${styles.panelBgOnly} ${styles.panelBorder}`}> 
-                {/* NEW: FPS SETTING */}
+                {/* FPS SETTING */}
                 <div className="flex items-center justify-between">
                     <span className={`text-xs font-bold uppercase tracking-wider ${styles.textSecondary}`}>{t.fpsLabel}</span>
                     <select value={fps} onChange={(e) => setFps(Number(e.target.value))} className={`text-xs p-1 rounded border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-300'}`}>
@@ -2116,6 +2196,24 @@ export default function App() {
                     </select>
                 </div>
 
+                {/* NEW: MASS SETTING */}
+                {activeObjId !== 'COM' && (
+                  <div className="flex items-center justify-between mt-1">
+                      <span className={`text-xs font-bold uppercase tracking-wider ${styles.textSecondary}`}>{t.massLabel} (kg)</span>
+                      <input 
+                          type="number" 
+                          step="0.01" 
+                          min="0"
+                          value={objects.find(o => o.id === activeObjId)?.mass ?? 1} 
+                          onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setObjects(prev => prev.map(o => o.id === activeObjId ? { ...o, mass: isNaN(val) ? 0 : val } : o));
+                          }} 
+                          className={`w-20 text-xs p-1 rounded border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-300'}`}
+                      />
+                  </div>
+                )}
+
                 <div className="flex flex-col gap-1 border-t pt-3 border-slate-700/20"> 
                   <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>{t.originLabel}: {origin ? `(${Math.round(origin.x)}, ${Math.round(origin.y)})` : t.notSet}</span> </div> 
                   <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> <span>{t.scaleLabel}: {pixelsPerMeter ? `${Math.round(pixelsPerMeter)} px/m` : t.notSet}</span> {pixelsPerMeter && ( <button onClick={resetScale} className="hover:text-red-400 transition" title="Reset Scale"> <RotateCcw size={12} /> </button> )} </div>
@@ -2125,7 +2223,7 @@ export default function App() {
                   <div className={`flex items-center justify-between text-xs mb-1 ${styles.textSecondary}`}> <span className="flex items-center gap-1"><CircleDashed size={12}/> {t.blurSize}</span> <span>{uncertaintyPx}px</span> </div>
                   <input type="range" min="0" max="50" value={uncertaintyPx} onChange={(e) => setUncertaintyPx(Number(e.target.value))} className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                 </div>
-                {points.length > 0 && ( <button onClick={() => setPoints([])} className="text-red-400 hover:text-red-300 flex items-center justify-center gap-2 text-sm"> <Trash2 size={16} /> {t.clearData} </button> )} 
+                {points.length > 0 && activeObjId !== 'COM' && ( <button onClick={() => setPoints([])} className="text-red-400 hover:text-red-300 flex items-center justify-center gap-2 text-sm"> <Trash2 size={16} /> {t.clearData} </button> )} 
               </div>
               <div className={`flex-1 overflow-y-auto ${styles.bg}`}> 
                   <div className="flex flex-col h-full">
@@ -2138,7 +2236,7 @@ export default function App() {
                           {positionData.map((p, i) => (
                             <tr key={i} className={`transition ${styles.tableRow}`}> <td className={`p-3 ${styles.textSecondary}`}>{i + 1}</td> <td className="p-3 font-mono text-blue-500">{p.time.toFixed(3)}</td> <td className={`p-3 font-mono ${styles.tableCell}`}>{p.x.toFixed(3)}</td> <td className={`p-3 font-mono ${styles.tableCell}`}>{p.y.toFixed(3)}</td> </tr>
                           ))}
-                          {points.length === 0 && ( <tr><td colSpan="4" className={`p-8 text-center ${styles.textSecondary}`}>{t.noData} {activeObjId}</td></tr> )}
+                          {points.length === 0 && ( <tr><td colSpan="4" className={`p-8 text-center ${styles.textSecondary}`}>{activeObjId === 'COM' ? t.noDataCOM : `${t.noData} ${activeObjId}`}</td></tr> )}
                         </tbody>
                       </table>
                     </div>
@@ -2154,7 +2252,7 @@ export default function App() {
           <div className={`flex flex-1 overflow-hidden ${styles.bg}`}>
             <div className="flex-1 p-6 flex flex-col">
               <div id="motion-chart" className={`rounded-xl border flex-1 flex flex-col overflow-hidden shadow-2xl ${styles.panel}`}>
-                 <div className={`p-4 border-b flex gap-4 ${styles.panelBgOnly} ${styles.panelBorder}`}>
+                 <div className={`p-4 border-b flex flex-wrap gap-4 items-center ${styles.panelBgOnly} ${styles.panelBorder}`}>
                     <div className="flex items-center gap-2">
                       <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.yAxis}</span>
                       <select value={plotY} onChange={(e) => setPlotY(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
@@ -2167,6 +2265,37 @@ export default function App() {
                          <option value="time">{t.time}</option> <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option>
                       </select>
                     </div>
+                    
+                    <div className="flex-1"></div>
+                    
+                    {/* NEW: DATA RANGE CROPPER */}
+                    <div className={`flex items-center gap-2 pl-4 border-l ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.dataRange} (s):</span>
+                      <input 
+                          type="number" 
+                          step="0.1" 
+                          value={cropStart} 
+                          onChange={(e) => setCropStart(e.target.value)} 
+                          placeholder={t.start} 
+                          className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`} 
+                      />
+                      <span className={styles.textSecondary}>-</span>
+                      <input 
+                          type="number" 
+                          step="0.1" 
+                          value={cropEnd} 
+                          onChange={(e) => setCropEnd(e.target.value)} 
+                          placeholder={t.end} 
+                          className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`} 
+                      />
+                      <button 
+                          onClick={() => { setCropStart(''); setCropEnd(''); }} 
+                          className={`px-3 py-1.5 text-xs rounded transition font-semibold ${styles.buttonSecondary}`}
+                      >
+                          {t.reset}
+                      </button>
+                    </div>
+
                  </div>
 
                  <div className="flex-1 p-4 relative">
@@ -2192,7 +2321,7 @@ export default function App() {
                           label={{ value: labels[plotY], angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 18 }} 
                         /> 
                         <Tooltip contentStyle={styles.chartTooltip} formatter={(val) => (typeof val === 'number') ? val.toFixed(3) : val} labelFormatter={(val) => `${labels[plotX]}: ${val}`} /> 
-                        <Scatter name={`${t.dataPoints} (${activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
+                        <Scatter name={`${t.dataPoints} (${activeObjId === 'COM' ? t.comShort : activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
                         {fitEquation && <Line type="monotone" dataKey="fitY" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={false} />}
                         {['x', 'y'].includes(plotY) && ( <Scatter dataKey={plotY} fill="none" stroke="none"> <ErrorBar dataKey="error" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" /> </Scatter> )}
                       </ComposedChart> 
@@ -2204,7 +2333,7 @@ export default function App() {
 
             <div className={`w-96 border-l flex flex-col p-6 gap-6 shrink-0 ${styles.panel}`}>
                <div>
-                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> {t.curveFitting} ({activeObjId})</h3>
+                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> {t.curveFitting} ({activeObjId === 'COM' ? t.comShort : activeObjId})</h3>
                  <div className="flex flex-col gap-2">
                     <label className={`text-sm ${styles.textSecondary}`}>{t.modelType}</label>
                     <select value={fitModel} onChange={(e) => setFitModel(e.target.value)} className={`border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${styles.input}`}>
