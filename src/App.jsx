@@ -2576,12 +2576,14 @@ export default function App() {
   }, [fitModel, activeData, plotX, plotY]);
 
   const chartData = useMemo(() => {
+    if (!fitEquation) return activeData;
+
     const base = activeData.map(d => ({
       ...d,
       fitY: (d[plotX] !== null && isFinite(d[plotX])) ? fitEquation.fn(d[plotX]) : null
     }));
 
-    if (!fitEquation || activeData.length === 0 || xScale.min === undefined || xScale.max === undefined) {
+    if (activeData.length === 0 || xScale.min === undefined || xScale.max === undefined) {
       return base;
     }
 
