@@ -2576,12 +2576,35 @@ export default function App() {
   }, [fitModel, activeData, plotX, plotY]);
 
   const chartData = useMemo(() => {
-    if (!fitEquation) return activeData;
-    return activeData.map(d => ({
+    const base = activeData.map(d => ({
       ...d,
       fitY: (d[plotX] !== null && isFinite(d[plotX])) ? fitEquation.fn(d[plotX]) : null
     }));
-  }, [activeData, fitEquation, plotX]);
+
+    if (!fitEquation || activeData.length === 0 || xScale.min === undefined || xScale.max === undefined) {
+      return base;
+    }
+
+    const minX = xScale.min;
+    const maxX = xScale.max;
+    const range = maxX - minX;
+    if (range <= 0) return base;
+
+    const resolution = 150;
+    const step = range / resolution;
+    const virtualPoints = [];
+
+    for (let i = 0; i <= resolution; i++) {
+      const vx = minX + i * step;
+      virtualPoints.push({
+        [plotX]: vx,
+        fitYContinuous: fitEquation.fn(vx),
+        isVirtual: true
+      });
+    }
+
+    return [...base, ...virtualPoints];
+  }, [activeData, fitEquation, plotX, xScale]);
 
   const labels = { 
     'time': t.time, 
@@ -3578,7 +3601,7 @@ export default function App() {
                              /> 
                              <Tooltip contentStyle={styles.chartTooltip} formatter={(val) => (typeof val === 'number') ? val.toFixed(3) : val} labelFormatter={(val) => `${labels[plotX]}: ${val}`} /> 
                              <Scatter name={`${t.dataPoints} (${activeObjId === 'COM' ? t.comShort : activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
-                             {fitEquation && <Line type="monotone" dataKey="fitY" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={false} />}
+                             {fitEquation && <Line type="linear" dataKey="fitYContinuous" name={t.curveFit} stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={false} />}
                              {['x', 'y'].includes(plotY) && ( <Scatter dataKey={plotY} fill="none" stroke="none"> <ErrorBar dataKey="error" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" /> </Scatter> )}
                            </ComposedChart> 
                         </ResponsiveContainer>
