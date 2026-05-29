@@ -1,6 +1,7 @@
+/* eslint-disable */
 /**
  * PhysTracker
- * Version: 1.0.1
+ * Version: 1.1.0
  * Author: Cesar Cortes
  * Powered by: Gemini Pro AI
  * License: MIT
@@ -24,7 +25,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Upload, Trash2, Play, Pause, AlertCircle, Ruler, Crosshair, Table, Activity, SkipBack, SkipForward, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Maximize, Undo2, CheckCircle2, Info, Download, TrendingUp, Clock, Target, CircleDashed, Calculator, Sun, Moon, Camera, LayoutTemplate, Save, FolderOpen, RefreshCw, Users, X, Languages, Coffee, Github, Mail, Move, Menu } from 'lucide-react';
-import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar } from 'recharts';
+import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ErrorBar, ReferenceLine } from 'recharts';
 
 // --- HELPER: FORMAT TICKS DYNAMICALLY ---
 const getTickFormatter = (step) => {
@@ -41,6 +42,25 @@ const getTickFormatter = (step) => {
   return (val) => Number(val).toFixed(decimals);
 };
 
+// --- EMISSION SPECTRA PRESETS ---
+const REFERENCE_EMISSION_LINES = [
+  // Hydrogen
+  { element: 'h2', wl: 410.2, color: '#a855f7', label: 'H-δ (410.2 nm)' },
+  { element: 'h2', wl: 434.0, color: '#6366f1', label: 'H-γ (434.0 nm)' },
+  { element: 'h2', wl: 486.1, color: '#06b6d4', label: 'H-β (486.1 nm)' },
+  { element: 'h2', wl: 656.3, color: '#ef4444', label: 'H-α (656.3 nm)' },
+  // Helium
+  { element: 'he', wl: 447.1, color: '#3b82f6', label: 'He (447.1 nm)' },
+  { element: 'he', wl: 501.6, color: '#10b981', label: 'He (501.6 nm)' },
+  { element: 'he', wl: 587.6, color: '#eab308', label: 'He (587.6 nm)' },
+  { element: 'he', wl: 667.8, color: '#f43f5e', label: 'He (667.8 nm)' },
+  // Mercury
+  { element: 'hg', wl: 404.7, color: '#c084fc', label: 'Hg (404.7 nm)' },
+  { element: 'hg', wl: 435.8, color: '#2563eb', label: 'Hg (435.8 nm)' },
+  { element: 'hg', wl: 546.1, color: '#22c55e', label: 'Hg (546.1 nm)' },
+  { element: 'hg', wl: 579.0, color: '#d97706', label: 'Hg (579.0 nm)' }
+];
+
 // --- TRANSLATIONS DICTIONARY ---
 const TRANSLATIONS = {
   en: {
@@ -50,7 +70,7 @@ const TRANSLATIONS = {
     saveProject: "Save Project",
     loadProject: "Load Project",
     resetData: "Reset / Clear Data",
-    waitingVideo: "Waiting for Video",
+    waitingVideo: "Waiting for Video/Image",
     startTracking: "Start Tracking",
     stopTracking: "Stop Tracking",
     setOrigin: "Set Origin",
@@ -59,12 +79,12 @@ const TRANSLATIONS = {
     hideScale: "Hide Scale",
     showScale: "Show Scale",
     enterDistance: "Enter Distance",
-    uploadVideo: "Upload Video",
+    uploadVideo: "Upload Video/Image",
     dropToDelete: "Drop to Delete",
     setRealDistance: "Set Real Distance",
     cancel: "Cancel",
     save: "Save",
-    uploadPrompt: "Upload a video to begin analysis",
+    uploadPrompt: "Upload a video or image to begin analysis",
     undoLast: "Undo Last Point",
     prevFrame: "Previous Frame",
     nextFrame: "Next Frame",
@@ -144,7 +164,47 @@ const TRANSLATIONS = {
     visitGithub: "Visit GitHub",
     sendFeedback: "Send Feedback",
     buyCoffee: "Support Project",
-    moreOptions: "More Options"
+    moreOptions: "More Options",
+    // Overlay tools
+    overlayTools: "Overlay Tools",
+    tapeMeasure: "Tape Measure",
+    protractor: "Protractor",
+    velocityVectors: "Velocity Vectors",
+    accelerationVectors: "Acceleration Vectors",
+    vectorScale: "Vector Scale",
+    // Spectroscopy keys
+    spectroscopyPanel: "Spectroscopy & Line Profile",
+    lineProfileLabel: "Line Profile",
+    spreadLabel: "Spread Width (px)",
+    channelLabel: "Color Channel",
+    lumaChannel: "Intensity (Luma)",
+    redChannel: "Red Channel",
+    greenChannel: "Green Channel",
+    blueChannel: "Blue Channel",
+    spectralCalibration: "Wavelength Calibration",
+    spectralCalibDesc: "Assign known wavelengths (nm) to the ends of the profile line.",
+    leftEndWavelength: "P1 Wavelength (nm)",
+    rightEndWavelength: "P2 Wavelength (nm)",
+    invalidWavelength: "Please enter positive numbers",
+    spectroscopyChart: "Spectral Intensity Profile",
+    spectralXAxisMode: "X-Axis Unit",
+    pixelUnit: "Pixels (px)",
+    meterUnit: "Distance (m)",
+    wavelengthUnit: "Wavelength (nm)",
+    spectralIntensity: "Light Intensity (0-255)",
+    spectralDistance: "Position along Line",
+    presets: "Presets",
+    showRefLines: "Overlay Reference Lines",
+    showH2: "Hydrogen (H₂)",
+    showHe: "Helium (He)",
+    showHg: "Mercury (Hg)",
+    ref1Wavelength: "Ref 1 Wavelength (nm)",
+    ref2Wavelength: "Ref 2 Wavelength (nm)",
+    clickToSnap: "🎯 Snap to click",
+    positionOnLine: "Position on line",
+    snappingPrompt: "🎯 Click on Reference 1 (laser dot/peak) on the image...",
+    snappingPrompt2: "🎯 Click on Reference 2 (laser dot/peak) on the image...",
+    showGuidelines: "Show Guidelines"
   },
   es: {
     appTitle: "PhysTracker",
@@ -153,7 +213,7 @@ const TRANSLATIONS = {
     saveProject: "Guardar Proyecto",
     loadProject: "Cargar Proyecto",
     resetData: "Reiniciar / Borrar Datos",
-    waitingVideo: "Esperando Video",
+    waitingVideo: "Esperando Video/Imagen",
     startTracking: "Iniciar Rastreo",
     stopTracking: "Detener Rastreo",
     setOrigin: "Fijar Origen",
@@ -162,12 +222,12 @@ const TRANSLATIONS = {
     hideScale: "Ocultar Escala",
     showScale: "Mostrar Escala",
     enterDistance: "Ingresar Distancia",
-    uploadVideo: "Subir Video",
+    uploadVideo: "Subir Video/Imagen",
     dropToDelete: "Soltar para Borrar",
     setRealDistance: "Fijar Distancia Real",
     cancel: "Cancelar",
     save: "Guardar",
-    uploadPrompt: "Sube un video para comenzar el análisis",
+    uploadPrompt: "Sube un video o imagen para comenzar el análisis",
     undoLast: "Deshacer Último Punto",
     prevFrame: "Cuadro Anterior",
     nextFrame: "Siguiente Cuadro",
@@ -247,7 +307,47 @@ const TRANSLATIONS = {
     visitGithub: "Ver en GitHub",
     sendFeedback: "Enviar Comentarios",
     buyCoffee: "Apoyar Proyecto",
-    moreOptions: "Más Opciones"
+    moreOptions: "Más Opciones",
+    // Overlay tools
+    overlayTools: "Herramientas de Superposición",
+    tapeMeasure: "Cinta Métrica",
+    protractor: "Transportador",
+    velocityVectors: "Vectores de Velocidad",
+    accelerationVectors: "Vectores de Aceleración",
+    vectorScale: "Escala de Vectores",
+    // Spectroscopy keys
+    spectroscopyPanel: "Espectroscopía y Perfil de Línea",
+    lineProfileLabel: "Perfil de Línea",
+    spreadLabel: "Ancho de Banda (px)",
+    channelLabel: "Canal de Color",
+    lumaChannel: "Intensidad (Luma)",
+    redChannel: "Canal Rojo",
+    greenChannel: "Canal Verde",
+    blueChannel: "Canal Azul",
+    spectralCalibration: "Calibración de Onda",
+    spectralCalibDesc: "Asigna longitudes de onda (nm) conocidas a los extremos de la línea.",
+    leftEndWavelength: "Onda P1 (nm)",
+    rightEndWavelength: "Onda P2 (nm)",
+    invalidWavelength: "Ingrese números positivos",
+    spectroscopyChart: "Perfil de Intensidad Espectral",
+    spectralXAxisMode: "Unidad del Eje X",
+    pixelUnit: "Píxeles (px)",
+    meterUnit: "Distancia (m)",
+    wavelengthUnit: "Longitud de Onda (nm)",
+    spectralIntensity: "Intensidad de Luz (0-255)",
+    spectralDistance: "Posición en la Línea",
+    presets: "Preajustes",
+    showRefLines: "Superponer Líneas de Referencia",
+    showH2: "Hidrógeno (H₂)",
+    showHe: "Helio (He)",
+    showHg: "Mercurio (Hg)",
+    ref1Wavelength: "Onda Referencia 1 (nm)",
+    ref2Wavelength: "Onda Referencia 2 (nm)",
+    clickToSnap: "🎯 Fijar con clic",
+    positionOnLine: "Posición en la línea",
+    snappingPrompt: "🎯 Haga clic en la Referencia 1 (punto láser/pico) en la imagen...",
+    snappingPrompt2: "🎯 Haga clic en la Referencia 2 (punto láser/pico) en la imagen...",
+    showGuidelines: "Mostrar Guías"
   }
 };
 
@@ -382,8 +482,27 @@ export default function App() {
   }, [objects, activeObjId]);
 
   const [videoSrc, setVideoSrc] = useState(null);
+  const [imageSrc, setImageSrc] = useState(null);
+  const [imageObj, setImageObj] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState(null);
+
+  // Overlay states
+  const [protractor, setProtractor] = useState(null);
+  const [tapeMeasure, setTapeMeasure] = useState(null);
+  const [showVelocityVectors, setShowVelocityVectors] = useState(false);
+  const [showAccelerationVectors, setShowAccelerationVectors] = useState(false);
+  const [vectorScale, setVectorScale] = useState(1.0);
+
+  // Spectroscopy states
+  const [lineProfile, setLineProfile] = useState(null); // null or { p1: {x,y}, p2: {x,y}, spread: 5, channel: 'luma' }
+  const [wavelengthCalibration, setWavelengthCalibration] = useState(null); // null or { p1_wl: 400, p2_wl: 700 }
+  const [spectralMode, setSpectralMode] = useState('pixels'); // 'pixels', 'distance', or 'wavelength'
+  const [analysisChartMode, setAnalysisChartMode] = useState('kinematics'); // 'kinematics' or 'spectroscopy'
+  const [spectralData, setSpectralData] = useState([]); // Array of { distance, intensity, r, g, b }
+  const [activeReferenceOverlays, setActiveReferenceOverlays] = useState({ h2: false, he: false, hg: false });
+  const [activeClickTarget, setActiveClickTarget] = useState(null); // null, 'r1', or 'r2'
+  const [showGuidelines, setShowGuidelines] = useState(true); // default true
   
   // THEME STATE
   const [theme, setTheme] = useState('dark');
@@ -394,6 +513,48 @@ export default function App() {
 
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
   const toggleLanguage = () => setLanguage(l => l === 'en' ? 'es' : 'en');
+
+  const toggleTapeMeasure = () => {
+    if (tapeMeasure) {
+      setTapeMeasure(null);
+    } else {
+      const w = videoDims.w || 600;
+      const h = videoDims.h || 400;
+      setTapeMeasure({
+        p1: { x: w * 0.4, y: h * 0.5 },
+        p2: { x: w * 0.6, y: h * 0.5 }
+      });
+    }
+  };
+
+  const toggleProtractor = () => {
+    if (protractor) {
+      setProtractor(null);
+    } else {
+      const w = videoDims.w || 600;
+      const h = videoDims.h || 400;
+      setProtractor({
+        v: { x: w * 0.5, y: h * 0.5 },
+        a: { x: w * 0.45, y: h * 0.4 },
+        b: { x: w * 0.55, y: h * 0.4 }
+      });
+    }
+  };
+
+  const toggleLineProfile = () => {
+    if (lineProfile) {
+      setLineProfile(null);
+    } else {
+      const w = videoDims.w || 600;
+      const h = videoDims.h || 400;
+      setLineProfile({
+        p1: { x: w * 0.2, y: h * 0.5 },
+        p2: { x: w * 0.8, y: h * 0.5 },
+        spread: 5,
+        channel: 'luma'
+      });
+    }
+  };
 
   // --- THEME CONFIGURATION ---
   const styles = {
@@ -456,8 +617,8 @@ export default function App() {
   
   // NEW: Ref to track drag distance for Tap vs Drag detection
   const dragStartRef = useRef({ x: 0, y: 0, time: 0 });
-  // NEW: Ref to store offset between cursor and object center during drag
   const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const lineProfileStartRef = useRef(null);
   
   const [isHoveringTrash, setIsHoveringTrash] = useState(false);
   
@@ -469,6 +630,10 @@ export default function App() {
   // Timeline State
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const currentTimeRef = useRef(0);
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -530,6 +695,24 @@ export default function App() {
             if (data.fps) setFps(data.fps); // Restore FPS
             if (data.cropStart !== undefined) setCropStart(data.cropStart);
             if (data.cropEnd !== undefined) setCropEnd(data.cropEnd);
+            if (data.protractor !== undefined) setProtractor(data.protractor);
+            if (data.tapeMeasure !== undefined) setTapeMeasure(data.tapeMeasure);
+            if (data.showVelocityVectors !== undefined) setShowVelocityVectors(data.showVelocityVectors);
+            if (data.showAccelerationVectors !== undefined) setShowAccelerationVectors(data.showAccelerationVectors);
+            if (data.vectorScale !== undefined) setVectorScale(data.vectorScale);
+            if (data.lineProfile !== undefined) setLineProfile(data.lineProfile);
+            if (data.wavelengthCalibration !== undefined) setWavelengthCalibration(data.wavelengthCalibration);
+            if (data.spectralMode !== undefined) setSpectralMode(data.spectralMode);
+            if (data.activeReferenceOverlays !== undefined) {
+              setActiveReferenceOverlays(data.activeReferenceOverlays);
+            } else {
+              setActiveReferenceOverlays({ h2: false, he: false, hg: false });
+            }
+            if (data.showGuidelines !== undefined) {
+              setShowGuidelines(data.showGuidelines);
+            } else {
+              setShowGuidelines(true);
+            }
         } catch (e) {
             console.error("Failed to restore autosave", e);
         }
@@ -552,14 +735,24 @@ export default function App() {
         language,
         fps, // Save FPS
         cropStart,
-        cropEnd
+        cropEnd,
+        protractor,
+        tapeMeasure,
+        showVelocityVectors,
+        showAccelerationVectors,
+        vectorScale,
+        lineProfile,
+        wavelengthCalibration,
+        spectralMode,
+        activeReferenceOverlays,
+        showGuidelines
     };
     localStorage.setItem('physTracker_autosave', JSON.stringify(stateToSave));
-  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode, language, fps, cropStart, cropEnd]);
+  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode, language, fps, cropStart, cropEnd, protractor, tapeMeasure, showVelocityVectors, showAccelerationVectors, vectorScale, lineProfile, wavelengthCalibration, spectralMode, activeReferenceOverlays, showGuidelines]);
 
   const saveProject = () => {
     const stateToSave = {
-        meta: { version: "1.0.1", date: new Date().toISOString() }, // Version 1.0.1
+        meta: { version: "1.1.0", date: new Date().toISOString() }, // Version 1.1.0
         objects,
         activeObjId,
         calibrationPoints,
@@ -572,7 +765,17 @@ export default function App() {
         language,
         fps, // Save FPS
         cropStart,
-        cropEnd
+        cropEnd,
+        protractor,
+        tapeMeasure,
+        showVelocityVectors,
+        showAccelerationVectors,
+        vectorScale,
+        lineProfile,
+        wavelengthCalibration,
+        spectralMode,
+        activeReferenceOverlays,
+        showGuidelines
     };
     const blob = new Blob([JSON.stringify(stateToSave, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -616,12 +819,24 @@ export default function App() {
               setUncertaintyPx(data.uncertaintyPx || 10);
               setHasRestoredData(true);
               setVideoSrc(null); 
+              setImageSrc(null);
+              setImageObj(null);
               if (data.language) setLanguage(data.language);
               if (data.fps) setFps(data.fps); // Load FPS
               setCropStart(data.cropStart || '');
               setCropEnd(data.cropEnd || '');
+              setProtractor(data.protractor || null);
+              setTapeMeasure(data.tapeMeasure || null);
+              setShowVelocityVectors(data.showVelocityVectors || false);
+              setShowAccelerationVectors(data.showAccelerationVectors || false);
+              setVectorScale(data.vectorScale || 1.0);
+              setLineProfile(data.lineProfile || null);
+              setWavelengthCalibration(data.wavelengthCalibration || null);
+              setSpectralMode(data.spectralMode || 'pixels');
+              setActiveReferenceOverlays(data.activeReferenceOverlays || { h2: false, he: false, hg: false });
+              setShowGuidelines(data.showGuidelines !== undefined ? data.showGuidelines : true);
               
-              alert("Project loaded successfully. Please upload the corresponding video file.");
+              alert("Project loaded successfully. Please upload the corresponding video or image file.");
           } catch (err) {
               alert("Invalid Project File");
           }
@@ -637,16 +852,16 @@ export default function App() {
       }
   };
 
-  // --- 1. HANDLING VIDEO UPLOAD ---
+  // --- 1. HANDLING VIDEO OR IMAGE UPLOAD ---
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
       if (videoSrc) URL.revokeObjectURL(videoSrc);
+      if (imageSrc) URL.revokeObjectURL(imageSrc);
       const url = URL.createObjectURL(file);
-      setVideoSrc(url);
       
       // SMART WIPE LOGIC:
-      // If we have points but NO video loaded (restored state), DO NOT WIPE.
+      // If we have points but NO video/image loaded (restored state), DO NOT WIPE.
       if (!hasRestoredData) {
           // Reset both objects
           setObjects([
@@ -661,7 +876,7 @@ export default function App() {
           setVideoDims({ w: 0, h: 0 });
           // We intentionally do NOT reset FPS to keep user preference
       } else {
-          // We just attached a video to restored data. Turn off the flag so next upload wipes it.
+          // We just attached a video/image to restored data. Turn off the flag so next upload wipes it.
           setHasRestoredData(false);
       }
 
@@ -682,7 +897,40 @@ export default function App() {
       setCropStart(''); // Reset crop
       setCropEnd('');
       if (activeObjId === 'COM') setActiveObjId('A'); // Reset to safe object
-  }
+
+      if (file.type.startsWith('image/')) {
+        setVideoSrc(null);
+        setImageSrc(url);
+        
+        const imgObj = new Image();
+        imgObj.src = url;
+        imgObj.onload = () => {
+          setImageObj(imgObj);
+          const w = imgObj.width;
+          const h = imgObj.height;
+          setVideoDims({ w, h });
+          setDuration(0.033); // Mock duration
+          
+          if (scrollContainerRef.current) {
+            const availableW = scrollContainerRef.current.clientWidth - 40; 
+            const availableH = scrollContainerRef.current.clientHeight - 40;
+            const scaleW = availableW / w;
+            const scaleH = availableH / h;
+            const fitScale = Math.min(scaleW, scaleH);
+            setZoom(fitScale < 1 ? fitScale : 1);
+          }
+          
+          setTimeout(() => renderFrame(), 100);
+        };
+        imgObj.onerror = () => {
+          setError("Error loading image.");
+        };
+      } else {
+        setImageSrc(null);
+        setImageObj(null);
+        setVideoSrc(url);
+      }
+    }
   };
 
   // NEW: Object Switcher Handler
@@ -728,8 +976,8 @@ export default function App() {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     
-    // Allow rendering if we have valid dimensions, even if video isn't ready (for restored data)
-    if (!canvas || (!video && !hasRestoredData)) return;
+    // Allow rendering if we have valid dimensions, even if video/image isn't ready (for restored data)
+    if (!canvas || (!video && !imageObj && !hasRestoredData)) return;
     if (videoDims.w === 0 && !hasRestoredData) return;
 
     const ctx = canvas.getContext('2d');
@@ -738,8 +986,10 @@ export default function App() {
     ctx.setTransform(zoom, 0, 0, zoom, 0, 0); 
     ctx.clearRect(0, 0, videoDims.w, videoDims.h);
 
-    // 1. DRAW VIDEO FRAME
-    if (video && video.readyState >= 2) {
+    // 1. DRAW VIDEO OR IMAGE FRAME
+    if (imageObj) {
+        ctx.drawImage(imageObj, 0, 0, videoDims.w, videoDims.h);
+    } else if (video && video.readyState >= 2) {
         ctx.drawImage(video, 0, 0, videoDims.w, videoDims.h);
     } else if (hasRestoredData) {
          // Placeholder background if we have points but no video
@@ -747,7 +997,7 @@ export default function App() {
          ctx.fillRect(0, 0, videoDims.w || 800, videoDims.h || 600); // Default size if unknown
          ctx.fillStyle = '#64748b';
          ctx.font = '20px sans-serif';
-         ctx.fillText("Data Loaded. Please Upload Video.", 50, 50);
+         ctx.fillText("Data Loaded. Please Upload Video/Image.", 50, 50);
     }
 
     const lw = (w) => w / zoom; 
@@ -935,7 +1185,469 @@ export default function App() {
         drawReticle(reticlePos.x, reticlePos.y, dragState === 'reticle' || dragState === 'reticle_move_jump');
     }
 
-  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor, t, activeObjId]);
+    // --- DRAW MEASUREMENT OVERLAYS ---
+    
+    // Draw Tape Measure
+    if (tapeMeasure) {
+      ctx.save();
+      const { p1, p2 } = tapeMeasure;
+
+      // Draw dashed yellow-green line
+      ctx.beginPath();
+      ctx.strokeStyle = '#84cc16'; // yellow-green
+      ctx.lineWidth = lw(2.5);
+      ctx.setLineDash([5, 5]);
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // End Pins
+      const drawPin = (p, isDragging) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, lw(6), 0, 2 * Math.PI);
+        ctx.fillStyle = isDragging ? '#a3e635' : '#84cc16';
+        ctx.fill();
+        ctx.lineWidth = lw(2);
+        ctx.strokeStyle = 'white';
+        ctx.stroke();
+      };
+      
+      drawPin(p1, dragState === 'tape_p1');
+      drawPin(p2, dragState === 'tape_p2');
+
+      // Metric value text banner
+      const distPx = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+      const distVal = pixelsPerMeter ? `${(distPx / pixelsPerMeter).toFixed(3)} m` : `${Math.round(distPx)} px`;
+
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+      ctx.font = `bold ${lw(12)}px sans-serif`;
+      ctx.textAlign = 'center';
+      
+      const textWidth = ctx.measureText(distVal).width;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'; 
+      ctx.fillRect(midX - textWidth/2 - lw(6), midY - lw(10), textWidth + lw(12), lw(20));
+      ctx.fillStyle = '#f8fafc'; 
+      ctx.fillText(distVal, midX, midY + lw(4));
+
+      ctx.restore();
+    }
+
+    // Draw Protractor
+    if (protractor) {
+      ctx.save();
+      const { v, a, b } = protractor;
+
+      // Arm lines
+      ctx.beginPath();
+      ctx.strokeStyle = '#c084fc'; // Light purple
+      ctx.lineWidth = lw(2);
+      ctx.moveTo(v.x, v.y);
+      ctx.lineTo(a.x, a.y);
+      ctx.moveTo(v.x, v.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+
+      const drawHandle = (p, isDragging) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, lw(6), 0, 2 * Math.PI);
+        ctx.fillStyle = isDragging ? '#e9d5ff' : '#a855f7';
+        ctx.fill();
+        ctx.lineWidth = lw(2);
+        ctx.strokeStyle = 'white';
+        ctx.stroke();
+      };
+
+      drawHandle(v, dragState === 'protractor_v');
+      drawHandle(a, dragState === 'protractor_a');
+      drawHandle(b, dragState === 'protractor_b');
+
+      // Angle calculation
+      const dxA = a.x - v.x;
+      const dyA = a.y - v.y;
+      const dxB = b.x - v.x;
+      const dyB = b.y - v.y;
+
+      const angleA = Math.atan2(dyA, dxA);
+      const angleB = Math.atan2(dyB, dxB);
+      let diff = angleB - angleA;
+      
+      while (diff < 0) diff += 2 * Math.PI;
+      const angleDeg = (diff * 180) / Math.PI;
+
+      // Angle sector arc filling
+      const arcRadius = lw(35);
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.4)';
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.15)';
+      ctx.lineWidth = lw(1.5);
+      ctx.moveTo(v.x, v.y);
+      ctx.arc(v.x, v.y, arcRadius, angleA, angleB);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Degree Badge
+      const textX = v.x + Math.cos((angleA + angleB) / 2) * lw(55);
+      const textY = v.y + Math.sin((angleA + angleB) / 2) * lw(55);
+      const valStr = `${angleDeg.toFixed(1)}°`;
+
+      ctx.font = `bold ${lw(12)}px sans-serif`;
+      ctx.textAlign = 'center';
+      const textWidth = ctx.measureText(valStr).width;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.fillRect(textX - textWidth/2 - lw(4), textY - lw(8), textWidth + lw(8), lw(16));
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(valStr, textX, textY + lw(4));
+
+      ctx.restore();
+    }
+
+    // Draw Line Profile
+    if (lineProfile) {
+      ctx.save();
+      const { p1, p2, spread } = lineProfile;
+
+      // 1. Draw solid thin outer guidelines showing the spread (if spread > 1)
+      if (spread > 1) {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) {
+          const nx = -(dy / len) * (spread / 2);
+          const ny = (dx / len) * (spread / 2);
+
+          ctx.beginPath();
+          ctx.strokeStyle = isDark ? 'rgba(163, 230, 53, 0.25)' : 'rgba(132, 204, 22, 0.35)'; // Light lime borders
+          ctx.lineWidth = lw(1);
+          // Upper boundary
+          ctx.moveTo(p1.x + nx, p1.y + ny);
+          ctx.lineTo(p2.x + nx, p2.y + ny);
+          // Lower boundary
+          ctx.moveTo(p1.x - nx, p1.y - ny);
+          ctx.lineTo(p2.x - nx, p2.y - ny);
+          ctx.stroke();
+
+          // Connect endpoints with thin lines
+          ctx.beginPath();
+          ctx.moveTo(p1.x + nx, p1.y + ny);
+          ctx.lineTo(p1.x - nx, p1.y - ny);
+          ctx.moveTo(p2.x + nx, p2.y + ny);
+          ctx.lineTo(p2.x - nx, p2.y - ny);
+          ctx.stroke();
+        }
+      }
+
+      // 2. Draw dashed center line (Vibrant Lime color)
+      ctx.beginPath();
+      ctx.strokeStyle = '#84cc16'; // Lime-500
+      ctx.lineWidth = lw(2);
+      ctx.setLineDash([6, 4]);
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 3. Draw End handles
+      const drawHandle = (p, isDragging, label) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, lw(7), 0, 2 * Math.PI);
+        ctx.fillStyle = isDragging ? '#a3e635' : '#84cc16'; // Lighter green when active
+        ctx.fill();
+        ctx.lineWidth = lw(2);
+        ctx.strokeStyle = 'white';
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = '#84cc16';
+        ctx.font = `bold ${lw(11)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(label, p.x, p.y - lw(12));
+      };
+
+      drawHandle(p1, dragState === 'line_p1', 'P1');
+      drawHandle(p2, dragState === 'line_p2', 'P2');
+
+      // 4. Draw customized calibration reference crosshairs R1/R2 and vertical guidelines
+      if (wavelengthCalibration) {
+        const p1_t = wavelengthCalibration.p1_t !== undefined ? wavelengthCalibration.p1_t : 0.0;
+        const p2_t = wavelengthCalibration.p2_t !== undefined ? wavelengthCalibration.p2_t : 1.0;
+        const r1_x = p1.x + p1_t * (p2.x - p1.x);
+        const r1_y = p1.y + p1_t * (p2.y - p1.y);
+        const r2_x = p1.x + p2_t * (p2.x - p1.x);
+        const r2_y = p1.y + p2_t * (p2.y - p1.y);
+
+        // a. Draw vertical guidelines if checked
+        if (showGuidelines) {
+          ctx.beginPath();
+          ctx.strokeStyle = isDark ? 'rgba(6, 182, 212, 0.4)' : 'rgba(6, 182, 212, 0.55)'; // Cyan with transparency
+          ctx.lineWidth = lw(1.5);
+          ctx.setLineDash([4, 4]);
+          ctx.moveTo(r1_x, 0);
+          ctx.lineTo(r1_x, videoDims.h);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.strokeStyle = isDark ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.55)'; // Red with transparency
+          ctx.moveTo(r2_x, 0);
+          ctx.lineTo(r2_x, videoDims.h);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // b. Draw target markers on the line
+        const drawRefMarker = (rx, ry, color, label, isDragging) => {
+          ctx.beginPath();
+          ctx.arc(rx, ry, lw(6), 0, 2 * Math.PI);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.lineWidth = lw(2);
+          ctx.strokeStyle = 'white';
+          ctx.stroke();
+
+          // Crosshairs
+          ctx.beginPath();
+          ctx.moveTo(rx - lw(9), ry);
+          ctx.lineTo(rx + lw(9), ry);
+          ctx.moveTo(rx, ry - lw(9));
+          ctx.lineTo(rx, ry + lw(9));
+          ctx.strokeStyle = color;
+          ctx.lineWidth = lw(1.5);
+          ctx.stroke();
+
+          // Label
+          ctx.fillStyle = color;
+          ctx.font = `bold ${lw(10)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText(label, rx, ry - lw(12));
+        };
+
+        drawRefMarker(r1_x, r1_y, '#06b6d4', 'R1', dragState === 'line_r1');
+        drawRefMarker(r2_x, r2_y, '#ef4444', 'R2', dragState === 'line_r2');
+      }
+
+      ctx.restore();
+    }
+
+    // --- DRAW DYNAMIC KINEMATIC VECTORS ---
+    const sortedPoints = [...points].sort((a, b) => a.time - b.time);
+    const activeIndex = sortedPoints.findIndex(p => Math.abs(p.time - currentTimeRef.current) < 0.01);
+
+    const getScreenVelocity = (idx) => {
+      if (sortedPoints.length < 3) return { vx: 0, vy: 0 };
+      let vx = 0, vy = 0;
+      if (idx === 0) {
+        const p0 = sortedPoints[0], p1 = sortedPoints[1], p2 = sortedPoints[2];
+        const dt = p1.time - p0.time;
+        if (dt > 0.0001) {
+          vx = (-3 * p0.x + 4 * p1.x - p2.x) / (2 * dt);
+          vy = (-3 * p0.y + 4 * p1.y - p2.y) / (2 * dt);
+        }
+      } else if (idx === sortedPoints.length - 1) {
+        const pN = sortedPoints[sortedPoints.length - 1], pN1 = sortedPoints[sortedPoints.length - 2], pN2 = sortedPoints[sortedPoints.length - 3];
+        const dt = pN.time - pN1.time;
+        if (dt > 0.0001) {
+          vx = (3 * pN.x - 4 * pN1.x + pN2.x) / (2 * dt);
+          vy = (3 * pN.y - 4 * pN1.y + pN2.y) / (2 * dt);
+        }
+      } else {
+        const pPrev = sortedPoints[idx - 1], pNext = sortedPoints[idx + 1];
+        const dt = pNext.time - pPrev.time;
+        if (dt > 0.0001) {
+          vx = (pNext.x - pPrev.x) / dt;
+          vy = (pNext.y - pPrev.y) / dt;
+        }
+      }
+      return { vx, vy };
+    };
+
+    const drawArrow = (fromX, fromY, dx, dy, color, label) => {
+      const arrowLength = Math.sqrt(dx * dx + dy * dy);
+      if (arrowLength < 2) return; 
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lw(3);
+      ctx.moveTo(fromX, fromY);
+      
+      const toX = fromX + dx;
+      const toY = fromY + dy;
+      ctx.lineTo(toX, toY);
+      ctx.stroke();
+
+      const angle = Math.atan2(dy, dx);
+      const headLength = lw(10);
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.moveTo(toX, toY);
+      ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = color;
+      ctx.font = `bold ${lw(11)}px sans-serif`;
+      ctx.shadowColor = 'black';
+      ctx.shadowBlur = lw(2);
+      ctx.fillText(label, toX + lw(8) * Math.cos(angle), toY + lw(8) * Math.sin(angle) + lw(3));
+      ctx.restore();
+    };
+
+    if (activeIndex !== -1 && sortedPoints.length >= 3) {
+      const activeP = sortedPoints[activeIndex];
+      
+      if (showVelocityVectors) {
+        const sVel = getScreenVelocity(activeIndex);
+        const vScaleFactor = 0.5 * vectorScale;
+        drawArrow(activeP.x, activeP.y, sVel.vx * vScaleFactor, sVel.vy * vScaleFactor, '#22d3ee', 'v');
+      }
+
+      if (showAccelerationVectors) {
+        let sax = 0, say = 0;
+        if (activeIndex === 0) {
+          const v0 = getScreenVelocity(0), v1 = getScreenVelocity(1), v2 = getScreenVelocity(2);
+          const dt0 = sortedPoints[1].time - sortedPoints[0].time;
+          if (dt0 > 0.0001) {
+            sax = (-3 * v0.vx + 4 * v1.vx - v2.vx) / (2 * dt0);
+            say = (-3 * v0.vy + 4 * v1.vy - v2.vy) / (2 * dt0);
+          }
+        } else if (activeIndex === sortedPoints.length - 1) {
+          const vM = getScreenVelocity(sortedPoints.length - 1), vM1 = getScreenVelocity(sortedPoints.length - 2), vM2 = getScreenVelocity(sortedPoints.length - 3);
+          const dtM = sortedPoints[sortedPoints.length - 1].time - sortedPoints[sortedPoints.length - 2].time;
+          if (dtM > 0.0001) {
+            sax = (3 * vM.vx - 4 * vM1.vx + vM2.vx) / (2 * dtM);
+            say = (3 * vM.vy - 4 * vM1.vy + vM2.vy) / (2 * dtM);
+          }
+        } else {
+          const vPrev = getScreenVelocity(activeIndex - 1), vNext = getScreenVelocity(activeIndex + 1);
+          const dtC = sortedPoints[activeIndex + 1].time - sortedPoints[activeIndex - 1].time;
+          if (dtC > 0.0001) {
+            sax = (vNext.vx - vPrev.vx) / dtC;
+            say = (vNext.vy - vPrev.vy) / dtC;
+          }
+        }
+        
+        const aScaleFactor = 0.1 * vectorScale;
+        drawArrow(activeP.x, activeP.y, sax * aScaleFactor, say * aScaleFactor, '#fbbf24', 'a');
+      }
+    }
+
+  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor, t, activeObjId, protractor, tapeMeasure, showVelocityVectors, showAccelerationVectors, vectorScale, pixelsPerMeter, lineProfile, imageObj, wavelengthCalibration, showGuidelines]);
+
+  const sampleLineIntensity = useCallback(() => {
+    const video = videoRef.current;
+    if ((!video && !imageObj) || !lineProfile || videoDims.w === 0) return;
+    
+    // Create offscreen canvas at native dimensions
+    const canvas = document.createElement('canvas');
+    canvas.width = videoDims.w;
+    canvas.height = videoDims.h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Draw raw video frame or image
+    try {
+      if (imageObj) {
+        ctx.drawImage(imageObj, 0, 0, videoDims.w, videoDims.h);
+      } else if (video) {
+        ctx.drawImage(video, 0, 0, videoDims.w, videoDims.h);
+      }
+    } catch (e) {
+      return; // Media might not be ready
+    }
+    
+    // Get image data
+    const imgData = ctx.getImageData(0, 0, videoDims.w, videoDims.h);
+    const data = imgData.data;
+    const width = imgData.width;
+    const height = imgData.height;
+    
+    // Sample points along line Profile (p1/p2 are already in native video coordinates)
+    const x1 = lineProfile.p1.x;
+    const y1 = lineProfile.p1.y;
+    const x2 = lineProfile.p2.x;
+    const y2 = lineProfile.p2.y;
+    
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1) return;
+    
+    const ux = dx / len;
+    const uy = dy / len;
+    
+    // Normal perpendicular unit vector
+    const nx = -uy;
+    const ny = ux;
+    
+    const N = Math.floor(len); // Sample at roughly every pixel along the line
+    const spread = lineProfile.spread || 1;
+    const K = Math.floor(spread / 2);
+    const channel = lineProfile.channel || 'luma';
+    
+    const results = [];
+    
+    for (let i = 0; i <= N; i++) {
+      const pct = i / N;
+      const cx = x1 + pct * dx;
+      const cy = y1 + pct * dy;
+      
+      let sumIntensity = 0;
+      let sumR = 0, sumG = 0, sumB = 0;
+      let sampleCount = 0;
+      
+      // Perpendicular averaging (Spread)
+      for (let k = -K; k <= K; k++) {
+        const sx = Math.floor(cx + k * nx);
+        const sy = Math.floor(cy + k * ny);
+        
+        if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
+          const idx = (sy * width + sx) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          
+          sumR += r;
+          sumG += g;
+          sumB += b;
+          
+          let val = 0;
+          if (channel === 'red') val = r;
+          else if (channel === 'green') val = g;
+          else if (channel === 'blue') val = b;
+          else {
+            // Luma
+            val = 0.299 * r + 0.587 * g + 0.114 * b;
+          }
+          sumIntensity += val;
+          sampleCount++;
+        }
+      }
+      
+      if (sampleCount > 0) {
+        results.push({
+          index: i,
+          distance: i, // Raw distance in pixels
+          intensity: Math.round(sumIntensity / sampleCount),
+          r: Math.round(sumR / sampleCount),
+          g: Math.round(sumG / sampleCount),
+          b: Math.round(sumB / sampleCount)
+        });
+      }
+    }
+    
+    setSpectralData(results);
+  }, [lineProfile, videoDims, imageObj]);
+
+  // Sync sampling on video updates or line profile changes
+  useEffect(() => {
+    if (lineProfile) {
+      sampleLineIntensity();
+    }
+  }, [currentTime, lineProfile, sampleLineIntensity]);
 
   // --- 3. TRIGGER RENDER LOOP (UPDATED: FRAME SYNC) ---
   useEffect(() => {
@@ -998,7 +1710,7 @@ export default function App() {
         if (videoRef.current) {
           // 2. Force Video to "wake up" at the correct timestamp (Fixes Green Screen)
           // This flushes the decoding buffer which might be empty after unmount
-          videoRef.current.currentTime = currentTime;
+          videoRef.current.currentTime = currentTimeRef.current;
         }
         // 3. Force a redraw of the canvas points (Fixes Centering/Blank Canvas)
         // Wrapped in requestAnimationFrame to ensure it runs during a paint cycle
@@ -1006,7 +1718,7 @@ export default function App() {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [viewMode, currentTime, renderFrame]);
+  }, [viewMode, renderFrame]);
 
   useEffect(() => {
     renderFrame();
@@ -1024,8 +1736,33 @@ export default function App() {
     };
   };
 
+  // Helper for line body hit-detection: distance from a point to a line segment
+  const getDistanceToSegment = (px, py, x1, y1, x2, y2) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.sqrt((px - x1)**2 + (py - y1)**2);
+    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const projX = x1 + t * dx;
+    const projY = y1 + t * dy;
+    return Math.sqrt((px - projX)**2 + (py - projY)**2);
+  };
+
+  // Helper to project a point onto a line segment and get the fractional parameter t (0.0 to 1.0)
+  const projectPointToSegmentT = (cx, cy, ax, ay, bx, by, clamp = true) => {
+    const vx = bx - ax;
+    const vy = by - ay;
+    const wx = cx - ax;
+    const wy = cy - ay;
+    const lenSq = vx * vx + vy * vy;
+    if (lenSq === 0) return 0;
+    const t = (wx * vx + wy * vy) / lenSq;
+    return clamp ? Math.max(0, Math.min(1, t)) : t;
+  };
+
   const handlePointerDown = (e) => {
-    if (!videoRef.current || showInputModal) return;
+    if ((!videoRef.current && !imageObj) || showInputModal) return;
 
     // --- CUSTOM TOUCH PANNING FIX ---
     // We handle all touches instantly to avoid Safari's native scroll delay
@@ -1039,6 +1776,109 @@ export default function App() {
 
     let isInteractiveTarget = false; // Flag to track if we hit something actionable
     let newDragState = null; // NEW: Local tracker for immediate state logic
+
+    // PRIORITY 0.1: TAPE MEASURE
+    if (tapeMeasure) {
+      const distP1 = Math.sqrt(Math.pow(x - tapeMeasure.p1.x, 2) + Math.pow(y - tapeMeasure.p1.y, 2));
+      const distP2 = Math.sqrt(Math.pow(x - tapeMeasure.p2.x, 2) + Math.pow(y - tapeMeasure.p2.y, 2));
+      
+      if (distP1 < hitRadius) {
+        isInteractiveTarget = true;
+        newDragState = 'tape_p1';
+        setDragState('tape_p1');
+      } else if (distP2 < hitRadius) {
+        isInteractiveTarget = true;
+        newDragState = 'tape_p2';
+        setDragState('tape_p2');
+      }
+    }
+
+    // PRIORITY 0.15: LINE PROFILE
+    if (!isInteractiveTarget && lineProfile) {
+      // 0. Check Snapping click mode
+      if (activeClickTarget && wavelengthCalibration) {
+        isInteractiveTarget = true;
+        const t_proj = projectPointToSegmentT(x, y, lineProfile.p1.x, lineProfile.p1.y, lineProfile.p2.x, lineProfile.p2.y, false);
+        setWavelengthCalibration(prev => ({
+          ...prev,
+          p1_t: activeClickTarget === 'r1' ? t_proj : (prev?.p1_t ?? 0.0),
+          p2_t: activeClickTarget === 'r2' ? t_proj : (prev?.p2_t ?? 1.0)
+        }));
+        setActiveClickTarget(null);
+        return;
+      }
+
+      // Check R1 and R2 calibration handles (only if they are placed away from the line endpoints P1 and P2)
+      if (wavelengthCalibration) {
+        const p1_t = wavelengthCalibration.p1_t !== undefined ? wavelengthCalibration.p1_t : 0.0;
+        const p2_t = wavelengthCalibration.p2_t !== undefined ? wavelengthCalibration.p2_t : 1.0;
+        const r1_x = lineProfile.p1.x + p1_t * (lineProfile.p2.x - lineProfile.p1.x);
+        const r1_y = lineProfile.p1.y + p1_t * (lineProfile.p2.y - lineProfile.p1.y);
+        const r2_x = lineProfile.p1.x + p2_t * (lineProfile.p2.x - lineProfile.p1.x);
+        const r2_y = lineProfile.p1.y + p2_t * (lineProfile.p2.y - lineProfile.p1.y);
+
+        const distR1 = Math.sqrt(Math.pow(x - r1_x, 2) + Math.pow(y - r1_y, 2));
+        const distR2 = Math.sqrt(Math.pow(x - r2_x, 2) + Math.pow(y - r2_y, 2));
+
+        if (distR1 < hitRadius && p1_t > 0.02 && p1_t < 0.98) {
+          isInteractiveTarget = true;
+          newDragState = 'line_r1';
+          setDragState('line_r1');
+        } else if (distR2 < hitRadius && p2_t > 0.02 && p2_t < 0.98) {
+          isInteractiveTarget = true;
+          newDragState = 'line_r2';
+          setDragState('line_r2');
+        }
+      }
+
+      if (!isInteractiveTarget) {
+        const distP1 = Math.sqrt(Math.pow(x - lineProfile.p1.x, 2) + Math.pow(y - lineProfile.p1.y, 2));
+        const distP2 = Math.sqrt(Math.pow(x - lineProfile.p2.x, 2) + Math.pow(y - lineProfile.p2.y, 2));
+        
+        if (distP1 < hitRadius) {
+          isInteractiveTarget = true;
+          newDragState = 'line_p1';
+          setDragState('line_p1');
+        } else if (distP2 < hitRadius) {
+          isInteractiveTarget = true;
+          newDragState = 'line_p2';
+          setDragState('line_p2');
+        } else {
+        const distToLine = getDistanceToSegment(x, y, lineProfile.p1.x, lineProfile.p1.y, lineProfile.p2.x, lineProfile.p2.y);
+        if (distToLine < hitRadius) {
+          isInteractiveTarget = true;
+          newDragState = 'line_body';
+          setDragState('line_body');
+          lineProfileStartRef.current = {
+            p1: { ...lineProfile.p1 },
+            p2: { ...lineProfile.p2 },
+            click: { x, y }
+          };
+        }
+      }
+      }
+    }
+
+    // PRIORITY 0.2: PROTRACTOR
+    if (!isInteractiveTarget && protractor) {
+      const distV = Math.sqrt(Math.pow(x - protractor.v.x, 2) + Math.pow(y - protractor.v.y, 2));
+      const distA = Math.sqrt(Math.pow(x - protractor.a.x, 2) + Math.pow(y - protractor.a.y, 2));
+      const distB = Math.sqrt(Math.pow(x - protractor.b.x, 2) + Math.pow(y - protractor.b.y, 2));
+      
+      if (distV < hitRadius) {
+        isInteractiveTarget = true;
+        newDragState = 'protractor_v';
+        setDragState('protractor_v');
+      } else if (distA < hitRadius) {
+        isInteractiveTarget = true;
+        newDragState = 'protractor_a';
+        setDragState('protractor_a');
+      } else if (distB < hitRadius) {
+        isInteractiveTarget = true;
+        newDragState = 'protractor_b';
+        setDragState('protractor_b');
+      }
+    }
 
     // PRIORITY 1: RETICLE LOGIC
     if (!isCalibrating && isTracking && reticlePos && activeObjId !== 'COM') {
@@ -1174,7 +2014,48 @@ export default function App() {
     
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
 
-    if (dragState === 'origin') {
+    // --- OVERLAYS DRAG HANDLERS ---
+    if (dragState === 'tape_p1') {
+      setTapeMeasure({ ...tapeMeasure, p1: { x, y } });
+    } else if (dragState === 'tape_p2') {
+      setTapeMeasure({ ...tapeMeasure, p2: { x, y } });
+    } else if (dragState === 'protractor_v') {
+      const dxA = protractor.a.x - protractor.v.x;
+      const dyA = protractor.a.y - protractor.v.y;
+      const dxB = protractor.b.x - protractor.v.x;
+      const dyB = protractor.b.y - protractor.v.y;
+      setProtractor({
+        v: { x, y },
+        a: { x: x + dxA, y: y + dyA },
+        b: { x: x + dxB, y: y + dyB }
+      });
+    } else if (dragState === 'protractor_a') {
+      setProtractor({ ...protractor, a: { x, y } });
+    } else if (dragState === 'protractor_b') {
+      setProtractor({ ...protractor, b: { x, y } });
+    } else if (dragState === 'line_p1') {
+      setLineProfile({ ...lineProfile, p1: { x, y } });
+    } else if (dragState === 'line_p2') {
+      setLineProfile({ ...lineProfile, p2: { x, y } });
+    } else if (dragState === 'line_r1' || dragState === 'line_r2') {
+      if (lineProfile) {
+        const t_proj = projectPointToSegmentT(x, y, lineProfile.p1.x, lineProfile.p1.y, lineProfile.p2.x, lineProfile.p2.y, true);
+        setWavelengthCalibration(prev => ({
+          ...prev,
+          p1_t: dragState === 'line_r1' ? t_proj : (prev?.p1_t ?? 0.0),
+          p2_t: dragState === 'line_r2' ? t_proj : (prev?.p2_t ?? 1.0)
+        }));
+      }
+    } else if (dragState === 'line_body') {
+      const dx = x - lineProfileStartRef.current.click.x;
+      const dy = y - lineProfileStartRef.current.click.y;
+      setLineProfile({
+        ...lineProfile,
+        p1: { x: lineProfileStartRef.current.p1.x + dx, y: lineProfileStartRef.current.p1.y + dy },
+        p2: { x: lineProfileStartRef.current.p2.x + dx, y: lineProfileStartRef.current.p2.y + dy }
+      });
+    }
+    else if (dragState === 'origin') {
       setOrigin({ x, y });
     } else if (dragState === 'rotate' && origin) {
       const dx = x - origin.x;
@@ -1222,7 +2103,7 @@ export default function App() {
         // Threshold: If moved less than 10 pixels and short duration, treat as TAP
         if (dist < 10 && activeObjId !== 'COM') {
             // FIRE! Record Point
-            const time = videoRef.current.currentTime;
+            const time = videoRef.current ? videoRef.current.currentTime : 0;
             setPoints([...points, { id: Date.now(), x: reticlePos.x, y: reticlePos.y, time }]);
             stepForward();
             // Reticle stays where it is, ready for next adjustment
@@ -1281,6 +2162,7 @@ export default function App() {
 
   // --- STEP FUNCTIONS (GRID ALIGNED) ---
   const stepForward = useCallback(() => { 
+    if (imageObj) return;
     if (videoRef.current) { 
       videoRef.current.pause(); 
       setIsPlaying(false); 
@@ -1298,9 +2180,10 @@ export default function App() {
           setCurrentTime(targetTime); // Update UI immediately
       }
     } 
-  }, [fps, currentFrameIndex]);
+  }, [fps, currentFrameIndex, imageObj]);
 
   const stepBackward = useCallback(() => { 
+    if (imageObj) return;
     if (videoRef.current) { 
       videoRef.current.pause(); 
       setIsPlaying(false); 
@@ -1315,10 +2198,11 @@ export default function App() {
       videoRef.current.currentTime = targetTime;
       setCurrentTime(targetTime);
     } 
-  }, [fps, currentFrameIndex]);
+  }, [fps, currentFrameIndex, imageObj]);
 
   // Handler for when the video *actually* finishes moving to new time
   const handleSeeked = useCallback(() => {
+    if (imageObj) return;
     if (videoRef.current) {
       // Sync strictly on seeked to handle external events, but stepping relies on state
       const t = videoRef.current.currentTime;
@@ -1326,7 +2210,7 @@ export default function App() {
       // We don't overwrite currentFrameIndex here to avoid the "analog" drift loops
       renderFrame(); // <--- FIXED: Restored this call to update the canvas
     }
-  }, [renderFrame]);
+  }, [renderFrame, imageObj]);
 
   // Handler for when video has decoded first frame (fixes black screen)
   const handleLoadedData = useCallback(() => {
@@ -1334,6 +2218,7 @@ export default function App() {
   }, [renderFrame]);
 
   const togglePlay = async () => { 
+    if (imageObj) return;
     if (!videoRef.current) return; 
     try { 
       if (isPlaying) { 
@@ -1350,6 +2235,7 @@ export default function App() {
   };
   
   const handleSeek = (e) => {
+    if (imageObj) return;
     const time = parseFloat(e.target.value);
     if (videoRef.current) {
       videoRef.current.currentTime = time;
@@ -2051,11 +2937,11 @@ export default function App() {
               title={t.uploadVideo}
           > 
               <Upload size={20} /> 
-              <input type="file" accept="video/*" onChange={handleFileUpload} className="hidden" /> 
+              <input type="file" accept="video/*,image/*" onChange={handleFileUpload} className="hidden" /> 
           </label>
            
            {/* Waiting for Video Alert (Moved here) */}
-           {hasRestoredData && !videoSrc && (
+           {hasRestoredData && !videoSrc && !imageSrc && (
                  <span className="text-xs text-orange-400 animate-pulse font-semibold flex items-center gap-1 hidden lg:flex">
                      <AlertCircle size={16} /> {t.waitingVideo}
                  </span>
@@ -2106,8 +2992,7 @@ export default function App() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* VIEW 1: TRACKER MODE */}
-        {viewMode === 'tracker' && (
-          <>
+        <div className={`flex-1 flex overflow-hidden ${viewMode === 'tracker' ? '' : 'hidden'}`}>
             <div className={`flex-1 flex flex-col min-w-0 ${styles.bg} relative`}>
               {/* MOVED TRASH ICON HERE - FIXED OVERLAY */}
               <div ref={trashRef} className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}> <Trash2 size={32} /> <span className="text-xs font-bold mt-2"> {t.dropToDelete} </span> </div>
@@ -2124,6 +3009,24 @@ export default function App() {
               )}
 
               <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start p-4 relative ${styles.workspaceBg}`}>
+                {/* Snapping Mode Banner overlay */}
+                {activeClickTarget && (
+                   <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[100] px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-white rounded-full font-bold shadow-2xl flex items-center gap-3 transition-all animate-pulse select-none border border-white/20">
+                     <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
+                     <span className="text-xs tracking-wide">
+                       {activeClickTarget === 'r1' ? t.snappingPrompt : t.snappingPrompt2}
+                     </span>
+                     <button 
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         setActiveClickTarget(null);
+                       }} 
+                       className="ml-2 px-2 py-0.5 rounded bg-black/35 hover:bg-black/50 text-[10px] text-amber-200 transition font-bold"
+                     >
+                       {t.cancel}
+                     </button>
+                   </div>
+                )}
                 {/* REMOVED OLD SVG RETICLE */}
                 {dragState === 'point' && ( <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="13" cy="13" r="4" fill={activeObjectColor} stroke="white" strokeWidth="1.5" /> </svg> </div> )}
                 {dragState === 'calibration' && ( <div className="fixed z-[100] w-12 h-12 rounded-full border-4 border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.8)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center" style={{ left: mousePos.x, top: mousePos.y }}> <div className="w-1.5 h-1.5 bg-green-400 rounded-full" /> </div> )}
@@ -2134,12 +3037,12 @@ export default function App() {
                     <div className="flex gap-3 justify-center"> <button onClick={cancelCalibration} className={`px-4 py-2 rounded transition ${styles.buttonSecondary}`}>{t.cancel}</button> <button onClick={submitCalibration} className="px-4 py-2 rounded bg-green-600 hover:bg-green-500 text-white font-semibold transition">{t.save}</button> </div> 
                   </div> 
                 )}
-                {videoSrc ? (
+                {(videoSrc || imageSrc) ? (
                   // CANVAS-FIRST RENDER: Video is HIDDEN (opacity 0), Canvas draws the frame
                   // Added flex-none to prevent aspect ratio distortion during zoom
                   <div className="relative shadow-2xl origin-top-left bg-black mt-10 flex-none mx-auto" ref={containerRef} style={{ width: Math.floor(videoDims.w * zoom), height: Math.floor(videoDims.h * zoom) }}>
                     {/* MEMOIZED VIDEO ELEMENT WITH GPU LAYER FORCE */}
-                    {videoElement}
+                    {videoSrc && videoElement}
                     <canvas 
                         ref={canvasRef} 
                         width={Math.floor(videoDims.w * zoom)} 
@@ -2159,7 +3062,7 @@ export default function App() {
                         onPointerCancel={handlePointerUp} 
                         onMouseEnter={() => setIsHoveringCanvas(true)} 
                         onMouseLeave={() => setIsHoveringCanvas(false)} 
-                        className={`${dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'pan' ? 'cursor-grabbing' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} 
+                        className={`${activeClickTarget ? 'cursor-crosshair' : dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'pan' ? 'cursor-grabbing' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} 
                     />
                   </div>
                 ) : ( 
@@ -2172,12 +3075,12 @@ export default function App() {
               </div>
               <div className={`h-20 border-t flex items-center justify-center gap-8 px-6 shrink-0 z-30 ${styles.panel}`}>
                  <button onClick={undoLastPoint} disabled={points.length === 0 || activeObjId === 'COM'} className={`p-3 rounded-full transition disabled:opacity-30 ${styles.buttonSecondary}`} title={t.undoLast}> <Undo2 size={20} /> </button>
-                 <div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'}`}> 
-                    <button onClick={stepBackward} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame}> <SkipBack size={20} /> </button> 
-                    <button onClick={togglePlay} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-900/20" title={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button> 
-                    <button onClick={stepForward} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame}> <SkipForward size={20} /> </button> 
+                 <div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'} ${imageObj ? 'opacity-40 pointer-events-none' : ''}`}> 
+                    <button onClick={stepBackward} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame}> <SkipBack size={20} /> </button> 
+                    <button onClick={togglePlay} disabled={!!imageObj} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-900/20" title={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button> 
+                    <button onClick={stepForward} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame}> <SkipForward size={20} /> </button> 
                  </div>
-                 <div className="flex-1 max-w-xl mx-4 flex items-center gap-3"> <span className={`text-xs font-mono w-12 text-right ${styles.textSecondary}`}>{formatTime(currentTime)}</span> <input type="range" min="0" max={duration || 100} step="0.01" value={currentTime} onChange={handleSeek} className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" /> <span className={`text-xs font-mono w-12 ${styles.textSecondary}`}>{formatTime(duration)}</span> </div>
+                 <div className="flex-1 max-w-xl mx-4 flex items-center gap-3"> <span className={`text-xs font-mono w-12 text-right ${styles.textSecondary}`}>{formatTime(currentTime)}</span> <input type="range" min="0" max={duration || 100} step="0.01" value={currentTime} onChange={handleSeek} disabled={!!imageObj} className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-30 disabled:pointer-events-none" /> <span className={`text-xs font-mono w-12 ${styles.textSecondary}`}>{formatTime(duration)}</span> </div>
                  <div className={`flex items-center gap-2 px-4 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'}`}> <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.zoomOut}> <ZoomOut size={18} /> </button> <span className={`text-sm font-mono w-12 text-center ${styles.textSecondary}`}>{Math.round(zoom * 100)}%</span> <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.zoomIn}> <ZoomIn size={18} /> </button> <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div> <button onClick={() => setZoom(1)} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.resetView}> <Maximize size={18} /> </button> </div>
               </div>
             </div>
@@ -2223,6 +3126,301 @@ export default function App() {
                   <div className={`flex items-center justify-between text-xs mb-1 ${styles.textSecondary}`}> <span className="flex items-center gap-1"><CircleDashed size={12}/> {t.blurSize}</span> <span>{uncertaintyPx}px</span> </div>
                   <input type="range" min="0" max="50" value={uncertaintyPx} onChange={(e) => setUncertaintyPx(Number(e.target.value))} className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                 </div>
+
+                {/* ADVANCED OVERLAY TOOLS */}
+                <div className={`border-t pt-3 ${styles.panelBorder} flex flex-col gap-2`}>
+                  <div className="flex items-center gap-2 mb-1">
+                     <Ruler size={14} className="text-blue-500" />
+                     <span className={`text-xs font-bold uppercase tracking-wider ${styles.text}`}>{t.overlayTools}</span>
+                  </div>
+                  
+                  {/* Row 1: Tape Measure & Protractor Checkboxes */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${styles.textSecondary} hover:${styles.text}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={!!tapeMeasure} 
+                        onChange={toggleTapeMeasure} 
+                        className="rounded border-slate-600 text-blue-600 bg-slate-900 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span>{t.tapeMeasure}</span>
+                    </label>
+                    <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${styles.textSecondary} hover:${styles.text}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={!!protractor} 
+                        onChange={toggleProtractor} 
+                        className="rounded border-slate-600 text-blue-600 bg-slate-900 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span>{t.protractor}</span>
+                    </label>
+                  </div>
+
+                  {/* Row 2: Velocity & Acceleration Vector Checkboxes */}
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${styles.textSecondary} hover:${styles.text}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={showVelocityVectors} 
+                        onChange={(e) => setShowVelocityVectors(e.target.checked)} 
+                        className="rounded border-slate-600 text-blue-600 bg-slate-900 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span>{t.velocityVectors}</span>
+                    </label>
+                    <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${styles.textSecondary} hover:${styles.text}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={showAccelerationVectors} 
+                        onChange={(e) => setShowAccelerationVectors(e.target.checked)} 
+                        className="rounded border-slate-600 text-blue-600 bg-slate-900 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span>{t.accelerationVectors}</span>
+                    </label>
+                  </div>
+
+                  {/* Vector Magnification Scale Slider */}
+                  {(showVelocityVectors || showAccelerationVectors) && (
+                    <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className={`flex items-center justify-between text-xs mb-1 ${styles.textSecondary}`}>
+                        <span>{t.vectorScale}</span>
+                        <span className="font-mono">{vectorScale.toFixed(1)}x</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.1" 
+                        max="5.0" 
+                        step="0.1" 
+                        value={vectorScale} 
+                        onChange={(e) => setVectorScale(Number(e.target.value))} 
+                        className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* SPECTROSCOPY & LINE PROFILE TOOLS */}
+                <div className={`border-t pt-3 ${styles.panelBorder} flex flex-col gap-2`}>
+                  <div className="flex items-center gap-2 mb-1">
+                     <Activity size={14} className="text-lime-500" />
+                     <span className={`text-xs font-bold uppercase tracking-wider ${styles.text}`}>{t.spectroscopyPanel}</span>
+                  </div>
+
+                  <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${styles.textSecondary} hover:${styles.text}`}>
+                    <input 
+                      type="checkbox" 
+                      checked={!!lineProfile} 
+                      onChange={toggleLineProfile} 
+                      className="rounded border-slate-600 text-blue-600 bg-slate-900 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span>{t.lineProfileLabel}</span>
+                  </label>
+
+                  {lineProfile && (
+                    <div className="flex flex-col gap-2 mt-1 pl-2 border-l border-lime-500/20 animate-in fade-in slide-in-from-top-1 duration-200">
+                      {/* Spread width slider */}
+                      <div>
+                        <div className={`flex items-center justify-between text-xs mb-0.5 ${styles.textSecondary}`}>
+                          <span>{t.spreadLabel}</span>
+                          <span className="font-mono">{lineProfile.spread}px</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="1" 
+                          max="50" 
+                          value={lineProfile.spread} 
+                          onChange={(e) => setLineProfile({ ...lineProfile, spread: Number(e.target.value) })}
+                          className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                        />
+                      </div>
+
+                      {/* Color Channel dropdown */}
+                      <div className="flex items-center justify-between mt-1">
+                        <span className={`text-xs ${styles.textSecondary}`}>{t.channelLabel}</span>
+                        <select 
+                          value={lineProfile.channel || 'luma'} 
+                          onChange={(e) => setLineProfile({ ...lineProfile, channel: e.target.value })}
+                          className={`text-xs p-1 rounded border ${isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
+                        >
+                          <option value="luma">{t.lumaChannel}</option>
+                          <option value="red">{t.redChannel}</option>
+                          <option value="green">{t.greenChannel}</option>
+                          <option value="blue">{t.blueChannel}</option>
+                        </select>
+                      </div>
+
+                      {/* Optional Wavelength Calibration panel */}
+                      <div className="border-t border-slate-700/20 pt-2 mt-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className={`text-xs font-bold ${styles.text}`}>{t.spectralCalibration}</div>
+                          {wavelengthCalibration && (
+                            <label className="flex items-center gap-1 text-[9px] cursor-pointer select-none text-sky-400">
+                              <input 
+                                type="checkbox"
+                                checked={showGuidelines}
+                                onChange={(e) => setShowGuidelines(e.target.checked)}
+                                className="rounded border-slate-700 text-sky-500 bg-slate-900 focus:ring-sky-400 w-3 h-3"
+                              />
+                              <span>{t.showGuidelines}</span>
+                            </label>
+                          )}
+                        </div>
+                        <p className={`text-[10px] ${styles.textSecondary} leading-tight mb-2`}>{t.spectralCalibDesc}</p>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Reference 1 */}
+                          <div className={`rounded-lg p-2 border ${wavelengthCalibration?.p1_t > 0.02 && wavelengthCalibration?.p1_t < 0.98 ? 'border-cyan-500/20 bg-cyan-950/5' : 'border-slate-800'}`}>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <label className={`text-[10px] block font-semibold text-cyan-400`}>Ref 1 (nm)</label>
+                            </div>
+                            <input 
+                              type="number" 
+                              min="0"
+                              placeholder="400"
+                              value={wavelengthCalibration?.p1_wl ?? ''}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                setWavelengthCalibration(prev => ({
+                                  p1_wl: isNaN(val) ? 0 : val,
+                                  p2_wl: prev?.p2_wl ?? 700,
+                                  p1_t: prev?.p1_t ?? 0.0,
+                                  p2_t: prev?.p2_t ?? 1.0
+                                }));
+                              }}
+                              className={`w-full text-xs p-1 rounded border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-300'} mb-1.5`}
+                            />
+                            
+                            <button
+                              onClick={() => {
+                                if (activeClickTarget === 'r1') {
+                                  setActiveClickTarget(null);
+                                } else {
+                                  setActiveClickTarget('r1');
+                                  // initialize calibration if null
+                                  if (!wavelengthCalibration) {
+                                    setWavelengthCalibration({ p1_wl: 400, p2_wl: 700, p1_t: 0.0, p2_t: 1.0 });
+                                  }
+                                }
+                              }}
+                              className={`w-full py-1 px-1.5 rounded text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${activeClickTarget === 'r1' ? 'bg-cyan-500 text-white animate-pulse' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'}`}
+                            >
+                              {t.clickToSnap}
+                            </button>
+
+                            {wavelengthCalibration && (
+                              <div className="mt-2">
+                                <div className="flex items-center justify-between text-[9px] text-slate-400 mb-0.5">
+                                  <span>{t.positionOnLine}</span>
+                                  <span className="font-mono text-cyan-400">{Math.round((wavelengthCalibration.p1_t ?? 0.0) * 100)}%</span>
+                                </div>
+                                <input 
+                                  type="range"
+                                  min="0"
+                                  max="100"
+                                  step="1"
+                                  value={Math.round((wavelengthCalibration.p1_t ?? 0.0) * 100)}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value) / 100;
+                                    setWavelengthCalibration(prev => ({
+                                      ...prev,
+                                      p1_t: val,
+                                      p1_wl: prev?.p1_wl ?? 400,
+                                      p2_t: prev?.p2_t ?? 1.0,
+                                      p2_wl: prev?.p2_wl ?? 700
+                                    }));
+                                  }}
+                                  className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Reference 2 */}
+                          <div className={`rounded-lg p-2 border ${wavelengthCalibration?.p2_t > 0.02 && wavelengthCalibration?.p2_t < 0.98 ? 'border-red-500/20 bg-red-950/5' : 'border-slate-800'}`}>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <label className={`text-[10px] block font-semibold text-red-400`}>Ref 2 (nm)</label>
+                            </div>
+                            <input 
+                              type="number" 
+                              min="0"
+                              placeholder="700"
+                              value={wavelengthCalibration?.p2_wl ?? ''}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                setWavelengthCalibration(prev => ({
+                                  p2_wl: isNaN(val) ? 0 : val,
+                                  p1_wl: prev?.p1_wl ?? 400,
+                                  p1_t: prev?.p1_t ?? 0.0,
+                                  p2_t: prev?.p2_t ?? 1.0
+                                }));
+                              }}
+                              className={`w-full text-xs p-1 rounded border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-300'} mb-1.5`}
+                            />
+                            
+                            <button
+                              onClick={() => {
+                                if (activeClickTarget === 'r2') {
+                                  setActiveClickTarget(null);
+                                } else {
+                                  setActiveClickTarget('r2');
+                                  // initialize calibration if null
+                                  if (!wavelengthCalibration) {
+                                    setWavelengthCalibration({ p1_wl: 400, p2_wl: 700, p1_t: 0.0, p2_t: 1.0 });
+                                  }
+                                }
+                              }}
+                              className={`w-full py-1 px-1.5 rounded text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${activeClickTarget === 'r2' ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'}`}
+                            >
+                              {t.clickToSnap}
+                            </button>
+
+                            {wavelengthCalibration && (
+                              <div className="mt-2">
+                                <div className="flex items-center justify-between text-[9px] text-slate-400 mb-0.5">
+                                  <span>{t.positionOnLine}</span>
+                                  <span className="font-mono text-red-400">{Math.round((wavelengthCalibration.p2_t ?? 1.0) * 100)}%</span>
+                                </div>
+                                <input 
+                                  type="range"
+                                  min="0"
+                                  max="100"
+                                  step="1"
+                                  value={Math.round((wavelengthCalibration.p2_t ?? 1.0) * 100)}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value) / 100;
+                                    setWavelengthCalibration(prev => ({
+                                      ...prev,
+                                      p2_t: val,
+                                      p1_wl: prev?.p1_wl ?? 400,
+                                      p1_t: prev?.p1_t ?? 0.0,
+                                      p2_wl: prev?.p2_wl ?? 700
+                                    }));
+                                  }}
+                                  className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-red-500"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Wavelength x-axis unit selector */}
+                        {wavelengthCalibration && (
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-700/20">
+                            <span className={`text-[10px] ${styles.textSecondary}`}>{t.spectralXAxisMode}</span>
+                            <select 
+                              value={spectralMode} 
+                              onChange={(e) => setSpectralMode(e.target.value)}
+                              className={`text-[10px] p-0.5 rounded border ${isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
+                            >
+                              <option value="pixels">{t.pixelUnit}</option>
+                              {pixelsPerMeter && <option value="distance">{t.meterUnit}</option>}
+                              <option value="wavelength">{t.wavelengthUnit}</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {points.length > 0 && activeObjId !== 'COM' && ( <button onClick={() => setPoints([])} className="text-red-400 hover:text-red-300 flex items-center justify-center gap-2 text-sm"> <Trash2 size={16} /> {t.clearData} </button> )} 
               </div>
               <div className={`flex-1 overflow-y-auto ${styles.bg}`}> 
@@ -2244,136 +3442,382 @@ export default function App() {
                   </div>
               </div>
             </div>
-          </>
-        )}
-
+        </div>
         {/* VIEW 2: ANALYSIS MODE (Full Screen) */}
-        {viewMode === 'analysis' && (
-          <div className={`flex flex-1 overflow-hidden ${styles.bg}`}>
+        <div className={`flex flex-1 overflow-hidden ${styles.bg} ${viewMode === 'analysis' ? '' : 'hidden'}`}>
             <div className="flex-1 p-6 flex flex-col">
               <div id="motion-chart" className={`rounded-xl border flex-1 flex flex-col overflow-hidden shadow-2xl ${styles.panel}`}>
                  <div className={`p-4 border-b flex flex-wrap gap-4 items-center ${styles.panelBgOnly} ${styles.panelBorder}`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.yAxis}</span>
-                      <select value={plotY} onChange={(e) => setPlotY(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
-                        <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option> <option value="time">{t.time}</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.xAxis}</span>
-                      <select value={plotX} onChange={(e) => setPlotX(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
-                         <option value="time">{t.time}</option> <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option>
-                      </select>
-                    </div>
                     
-                    <div className="flex-1"></div>
-                    
-                    {/* NEW: DATA RANGE CROPPER */}
-                    <div className={`flex items-center gap-2 pl-4 border-l ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
-                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.dataRange} (s):</span>
-                      <input 
-                          type="number" 
-                          step="0.1" 
-                          value={cropStart} 
-                          onChange={(e) => setCropStart(e.target.value)} 
-                          placeholder={t.start} 
-                          className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`} 
-                      />
-                      <span className={styles.textSecondary}>-</span>
-                      <input 
-                          type="number" 
-                          step="0.1" 
-                          value={cropEnd} 
-                          onChange={(e) => setCropEnd(e.target.value)} 
-                          placeholder={t.end} 
-                          className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`} 
-                      />
+                    {/* CHART TYPE TOGGLE TAB */}
+                    <div className={`flex rounded p-0.5 border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
                       <button 
-                          onClick={() => { setCropStart(''); setCropEnd(''); }} 
-                          className={`px-3 py-1.5 text-xs rounded transition font-semibold ${styles.buttonSecondary}`}
+                        onClick={() => setAnalysisChartMode('kinematics')} 
+                        className={`px-3 py-1 text-xs rounded transition font-semibold ${analysisChartMode === 'kinematics' ? (isDark ? 'bg-slate-700 text-white shadow-sm' : 'bg-white shadow-sm text-slate-900') : styles.textSecondary + ' hover:' + styles.text}`}
                       >
-                          {t.reset}
+                        {t.trackerMode === 'Rastreador' ? 'Gráficos Cinemáticos' : 'Kinematics Charts'}
                       </button>
+                      {lineProfile && (
+                        <button 
+                          onClick={() => setAnalysisChartMode('spectroscopy')} 
+                          className={`px-3 py-1 text-xs rounded transition font-semibold ${analysisChartMode === 'spectroscopy' ? (isDark ? 'bg-slate-700 text-lime-400 shadow-sm' : 'bg-white shadow-sm text-lime-600') : styles.textSecondary + ' hover:' + styles.text}`}
+                        >
+                          {t.trackerMode === 'Rastreador' ? 'Perfil Espectral' : 'Spectral Profile'}
+                        </button>
+                      )}
                     </div>
+
+                    <div className={`w-px h-5 mx-1 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div>
+
+                    {analysisChartMode === 'kinematics' ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.yAxis}</span>
+                          <select value={plotY} onChange={(e) => setPlotY(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
+                            <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option> <option value="time">{t.time}</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.xAxis}</span>
+                          <select value={plotX} onChange={(e) => setPlotX(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
+                             <option value="time">{t.time}</option> <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option>
+                          </select>
+                        </div>
+                        
+                        <div className="flex-1"></div>
+                        
+                        {/* NEW: DATA RANGE CROPPER */}
+                        <div className={`flex items-center gap-2 pl-4 border-l ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+                          <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.dataRange} (s):</span>
+                          <input 
+                              type="number" 
+                              step="0.1" 
+                              value={cropStart} 
+                              onChange={(e) => setCropStart(e.target.value)} 
+                              placeholder={t.start} 
+                              className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`} 
+                          />
+                          <span className={styles.textSecondary}>-</span>
+                          <input 
+                              type="number" 
+                              step="0.1" 
+                              value={cropEnd} 
+                              onChange={(e) => setCropEnd(e.target.value)} 
+                              placeholder={t.end} 
+                              className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`} 
+                          />
+                          <button 
+                              onClick={() => { setCropStart(''); setCropEnd(''); }} 
+                              className={`px-3 py-1.5 text-xs rounded transition font-semibold ${styles.buttonSecondary}`}
+                          >
+                              {t.reset}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.spectralXAxisMode}</span>
+                          <select 
+                            value={spectralMode} 
+                            onChange={(e) => setSpectralMode(e.target.value)}
+                            className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}
+                          >
+                            <option value="pixels">{t.pixelUnit}</option>
+                            {pixelsPerMeter && <option value="distance">{t.meterUnit}</option>}
+                            {wavelengthCalibration && <option value="wavelength">{t.wavelengthUnit}</option>}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.channelLabel}</span>
+                          <select 
+                            value={lineProfile?.channel || 'luma'} 
+                            onChange={(e) => setLineProfile({ ...lineProfile, channel: e.target.value })}
+                            className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}
+                          >
+                            <option value="luma">{t.lumaChannel}</option>
+                            <option value="red">{t.redChannel}</option>
+                            <option value="green">{t.greenChannel}</option>
+                            <option value="blue">{t.blueChannel}</option>
+                          </select>
+                        </div>
+                        <div className="flex-1"></div>
+                        {wavelengthCalibration && (
+                          <div className={`text-xs font-mono font-bold px-3 py-1.5 rounded border border-lime-500/20 bg-lime-500/10 text-lime-400 animate-in fade-in`}>
+                            {wavelengthCalibration.p1_wl} nm ({Math.round((wavelengthCalibration.p1_t ?? 0.0) * 100)}%) ↔ {wavelengthCalibration.p2_wl} nm ({Math.round((wavelengthCalibration.p2_t ?? 1.0) * 100)}%)
+                          </div>
+                        )}
+                      </>
+                    )}
 
                  </div>
 
                  <div className="flex-1 p-4 relative">
-                   <ResponsiveContainer width="100%" height="100%"> 
-                      <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 50, bottom: 50 }}> 
-                        <CartesianGrid strokeDasharray="3 3" stroke={styles.chartGrid} /> 
-                        <XAxis 
-                          dataKey={plotX} 
-                          type="number" 
-                          stroke={styles.chartAxis} 
-                          fontSize={16} 
-                          domain={[xScale.min, xScale.max]}
-                          ticks={xScale.ticks}
-                          tickFormatter={getTickFormatter(xScale.step)} 
-                          label={{ value: labels[plotX], position: 'bottom', offset: 20, fill: styles.chartAxis, fontSize: 18 }} 
-                        /> 
-                        <YAxis 
-                          stroke={styles.chartAxis} 
-                          fontSize={16} 
-                          domain={[yScale.min, yScale.max]}
-                          ticks={yScale.ticks}
-                          tickFormatter={getTickFormatter(yScale.step)} 
-                          label={{ value: labels[plotY], angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 18 }} 
-                        /> 
-                        <Tooltip contentStyle={styles.chartTooltip} formatter={(val) => (typeof val === 'number') ? val.toFixed(3) : val} labelFormatter={(val) => `${labels[plotX]}: ${val}`} /> 
-                        <Scatter name={`${t.dataPoints} (${activeObjId === 'COM' ? t.comShort : activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
-                        {fitEquation && <Line type="monotone" dataKey="fitY" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={false} />}
-                        {['x', 'y'].includes(plotY) && ( <Scatter dataKey={plotY} fill="none" stroke="none"> <ErrorBar dataKey="error" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" /> </Scatter> )}
-                      </ComposedChart> 
-                   </ResponsiveContainer>
-                   {points.length < 2 && ( <div className={`absolute inset-0 flex items-center justify-center italic ${styles.textSecondary}`}> Add points in Tracker mode to see data. </div> )}
-                 </div>
+                    {analysisChartMode === 'kinematics' ? (
+                      <>
+                        <ResponsiveContainer width="100%" height="100%"> 
+                           <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 50, bottom: 50 }}> 
+                             <CartesianGrid strokeDasharray="3 3" stroke={styles.chartGrid} /> 
+                             <XAxis 
+                               dataKey={plotX} 
+                               type="number" 
+                               stroke={styles.chartAxis} 
+                               fontSize={16} 
+                               domain={[xScale.min, xScale.max]}
+                               ticks={xScale.ticks}
+                               tickFormatter={getTickFormatter(xScale.step)} 
+                               label={{ value: labels[plotX], position: 'bottom', offset: 20, fill: styles.chartAxis, fontSize: 18 }} 
+                             /> 
+                             <YAxis 
+                               stroke={styles.chartAxis} 
+                               fontSize={16} 
+                               domain={[yScale.min, yScale.max]}
+                               ticks={yScale.ticks}
+                               tickFormatter={getTickFormatter(yScale.step)} 
+                               label={{ value: labels[plotY], angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 18 }} 
+                             /> 
+                             <Tooltip contentStyle={styles.chartTooltip} formatter={(val) => (typeof val === 'number') ? val.toFixed(3) : val} labelFormatter={(val) => `${labels[plotX]}: ${val}`} /> 
+                             <Scatter name={`${t.dataPoints} (${activeObjId === 'COM' ? t.comShort : activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
+                             {fitEquation && <Line type="monotone" dataKey="fitY" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={false} />}
+                             {['x', 'y'].includes(plotY) && ( <Scatter dataKey={plotY} fill="none" stroke="none"> <ErrorBar dataKey="error" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" /> </Scatter> )}
+                           </ComposedChart> 
+                        </ResponsiveContainer>
+                        {points.length < 2 && ( <div className={`absolute inset-0 flex items-center justify-center italic ${styles.textSecondary}`}> Add points in Tracker mode to see data. </div> )}
+                      </>
+                    ) : (
+                      <>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart 
+                            data={spectralData.map(p => {
+                              let xVal = p.distance;
+                              if (spectralMode === 'distance' && pixelsPerMeter) {
+                                xVal = p.distance / pixelsPerMeter;
+                              } else if (spectralMode === 'wavelength' && wavelengthCalibration && spectralData.length > 1) {
+                                const maxIdx = spectralData.length - 1;
+                                const t1 = wavelengthCalibration.p1_t !== undefined ? wavelengthCalibration.p1_t : 0.0;
+                                const t2 = wavelengthCalibration.p2_t !== undefined ? wavelengthCalibration.p2_t : 1.0;
+                                const wl1 = wavelengthCalibration.p1_wl || 400;
+                                const wl2 = wavelengthCalibration.p2_wl || 700;
+                                
+                                let calculatedWl;
+                                if (Math.abs(t2 - t1) > 0.0001) {
+                                  const t_curr = p.index / maxIdx;
+                                  calculatedWl = wl1 + ((t_curr - t1) / (t2 - t1)) * (wl2 - wl1);
+                                } else {
+                                  calculatedWl = wl1;
+                                }
+                                xVal = calculatedWl;
+                              }
+                              return {
+                                ...p,
+                                xVal: parseFloat(xVal.toFixed(3))
+                              };
+                            })} 
+                            margin={{ top: 20, right: 30, left: 50, bottom: 50 }}
+                          >
+                            <defs>
+                              <linearGradient id="spectralGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#84cc16" stopOpacity={0.4}/>
+                                <stop offset="95%" stopColor="#84cc16" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke={styles.chartGrid} />
+                            <XAxis 
+                              dataKey="xVal" 
+                              type="number" 
+                              stroke={styles.chartAxis} 
+                              fontSize={14} 
+                              domain={['auto', 'auto']}
+                              label={{ 
+                                value: spectralMode === 'distance' ? `${t.spectralDistance} (m)` : spectralMode === 'wavelength' ? `${t.wavelengthUnit} (nm)` : `${t.spectralDistance} (px)`, 
+                                position: 'bottom', 
+                                offset: 20, 
+                                fill: styles.chartAxis, 
+                                fontSize: 16 
+                              }} 
+                            />
+                            <YAxis 
+                              stroke={styles.chartAxis} 
+                              fontSize={14} 
+                              domain={[0, 255]}
+                              ticks={[0, 50, 100, 150, 200, 255]}
+                              label={{ value: t.spectralIntensity, angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 16 }} 
+                            />
+                            <Tooltip 
+                              contentStyle={styles.chartTooltip} 
+                              formatter={(val, name) => {
+                                if (name === 'intensity') return [val, t.channelLabel];
+                                return [val, name.toUpperCase()];
+                              }}
+                              labelFormatter={(val) => `${spectralMode === 'distance' ? `${t.spectralDistance} (m)` : spectralMode === 'wavelength' ? `${t.wavelengthUnit} (nm)` : `${t.spectralDistance} (px)`}: ${val}`} 
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="intensity" 
+                              stroke="#84cc16" 
+                              strokeWidth={3} 
+                              dot={false}
+                              activeDot={{ r: 6 }}
+                            />
+                            {lineProfile?.channel === 'luma' && (
+                              <>
+                                <Line type="monotone" dataKey="r" stroke="#ef4444" strokeWidth={1} dot={false} strokeOpacity={0.3} />
+                                <Line type="monotone" dataKey="g" stroke="#22c55e" strokeWidth={1} dot={false} strokeOpacity={0.3} />
+                                <Line type="monotone" dataKey="b" stroke="#3b82f6" strokeWidth={1} dot={false} strokeOpacity={0.3} />
+                              </>
+                            )}
+                            {spectralMode === 'wavelength' && REFERENCE_EMISSION_LINES.map((line, idx) => {
+                              if (!activeReferenceOverlays[line.element]) return null;
+                              return (
+                                <ReferenceLine
+                                  key={idx}
+                                  x={line.wl}
+                                  stroke={line.color}
+                                  strokeWidth={2}
+                                  strokeDasharray="4 4"
+                                  label={{
+                                    value: line.label,
+                                    position: 'top',
+                                    fill: line.color,
+                                    fontSize: 10,
+                                    fontWeight: 'bold',
+                                    dy: -10
+                                  }}
+                                />
+                              );
+                            })}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                        {spectralData.length === 0 && ( <div className={`absolute inset-0 flex items-center justify-center italic ${styles.textSecondary}`}> Activate Line Profile and upload video to see spectral analysis. </div> )}
+                      </>
+                    )}
+                  </div>
               </div>
             </div>
 
             <div className={`w-96 border-l flex flex-col p-6 gap-6 shrink-0 ${styles.panel}`}>
-               <div>
-                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> {t.curveFitting} ({activeObjId === 'COM' ? t.comShort : activeObjId})</h3>
-                 <div className="flex flex-col gap-2">
-                    <label className={`text-sm ${styles.textSecondary}`}>{t.modelType}</label>
-                    <select value={fitModel} onChange={(e) => setFitModel(e.target.value)} className={`border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${styles.input}`}>
-                      <option value="none">{t.none}</option>
-                      <option value="linear">{t.linear}</option>
-                      <option value="quadratic">{t.quadratic}</option>
-                      <option value="sinusoidal">{t.sinusoidal}</option>
-                    </select>
-                 </div>
-               </div>
-               {fitEquation && (
-                 <div className={`rounded-xl border p-4 animate-in fade-in slide-in-from-right-4 ${isDark ? 'bg-slate-900/50 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
-                   <div className={`font-mono font-bold text-sm mb-4 pb-2 border-b ${isDark ? 'text-orange-400 border-slate-700' : 'text-orange-600 border-slate-200'}`}> {fitEquation.text} </div>
-                   <div className="space-y-3">
-                      {fitEquation.type === 'Linear' ? (
-                        <>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.slope}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.m.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.intercept}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.b.toFixed(4)}</span></div>
-                        </>
-                      ) : fitEquation.type === 'Quadratic' ? (
-                        <>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.aTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.bTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.cTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
-                        </>
-                      ) : (
-                         <>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.amplitude}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.frequency}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.phase}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.offset}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.D.toFixed(4)}</span></div>
-                         </>
-                      )}
-                      
-                      <div className="flex justify-between items-center pt-2 border-t border-slate-700/50">
-                        <span className={styles.textSecondary}>R²</span> 
-                        <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.r2 ? fitEquation.r2.toFixed(4) : "N/A"}</span>
-                      </div>
+               {analysisChartMode === 'kinematics' ? (
+                 <>
+                   <div>
+                     <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> {t.curveFitting} ({activeObjId === 'COM' ? t.comShort : activeObjId})</h3>
+                     <div className="flex flex-col gap-2">
+                        <label className={`text-sm ${styles.textSecondary}`}>{t.modelType}</label>
+                        <select value={fitModel} onChange={(e) => setFitModel(e.target.value)} className={`border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${styles.input}`}>
+                          <option value="none">{t.none}</option>
+                          <option value="linear">{t.linear}</option>
+                          <option value="quadratic">{t.quadratic}</option>
+                          <option value="sinusoidal">{t.sinusoidal}</option>
+                        </select>
+                     </div>
                    </div>
-                 </div>
+                   {fitEquation && (
+                     <div className={`rounded-xl border p-4 animate-in fade-in slide-in-from-right-4 ${isDark ? 'bg-slate-900/50 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
+                       <div className={`font-mono font-bold text-sm mb-4 pb-2 border-b ${isDark ? 'text-orange-400 border-slate-700' : 'text-orange-600 border-slate-200'}`}> {fitEquation.text} </div>
+                       <div className="space-y-3">
+                          {fitEquation.type === 'Linear' ? (
+                            <>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.slope}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.m.toFixed(4)}</span></div>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.intercept}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.b.toFixed(4)}</span></div>
+                            </>
+                          ) : fitEquation.type === 'Quadratic' ? (
+                            <>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.aTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.bTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.cTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
+                            </>
+                          ) : (
+                             <>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.amplitude}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.frequency}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.phase}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
+                              <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.offset}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.D.toFixed(4)}</span></div>
+                             </>
+                          )}
+                          
+                          <div className="flex justify-between items-center pt-2 border-t border-slate-700/50">
+                            <span className={styles.textSecondary}>R²</span> 
+                            <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.r2 ? fitEquation.r2.toFixed(4) : "N/A"}</span>
+                          </div>
+                       </div>
+                     </div>
+                   )}
+                 </>
+               ) : (
+                 <>
+                   <div>
+                     <h3 className={`text-lg font-bold mb-3 flex items-center gap-2 ${styles.text}`}><Info size={18} className="text-lime-500" /> {t.language === 'es' ? 'Líneas de Emisión' : 'Emission Line Guides'}</h3>
+                     <p className={`text-xs ${styles.textSecondary} mb-4 leading-normal`}>
+                       {t.language === 'es' ? 'Use estas referencias de longitud de onda para identificar elementos químicos en picos espectrales:' : 'Use these standard optical emission peaks as references when identifying elements in your spectral graph:'}
+                     </p>
+                     <div className="space-y-3.5">
+                       {/* Element: Hydrogen */}
+                       <div className={`rounded-xl p-3 border transition-colors ${activeReferenceOverlays.h2 ? (isDark ? 'bg-red-950/20 border-red-500/30' : 'bg-red-50/50 border-red-200') : (isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200')}`}>
+                         <div className="flex justify-between items-center mb-1.5">
+                            <label className="flex items-center gap-2 text-xs font-bold text-red-500 cursor-pointer select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={activeReferenceOverlays.h2} 
+                                onChange={(e) => setActiveReferenceOverlays(prev => ({ ...prev, h2: e.target.checked }))}
+                                className={`rounded text-red-600 focus:ring-red-500 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}
+                              />
+                              {t.showH2}
+                            </label>
+                           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">Balmer Series</span>
+                         </div>
+                         <div className="grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[11px] text-slate-400">
+                           <div className="flex justify-between"><span>Violet:</span><span className="font-bold">410.2 nm</span></div>
+                           <div className="flex justify-between"><span>Blue-Vi:</span><span className="font-bold">434.0 nm</span></div>
+                           <div className="flex justify-between"><span>Blue-Gr:</span><span className="font-bold">486.1 nm</span></div>
+                           <div className="flex justify-between"><span>Red:</span><span className="font-bold text-red-500">656.3 nm</span></div>
+                         </div>
+                       </div>
+                       
+                       {/* Element: Helium */}
+                       <div className={`rounded-xl p-3 border transition-colors ${activeReferenceOverlays.he ? (isDark ? 'bg-yellow-950/20 border-yellow-500/30' : 'bg-yellow-50/50 border-yellow-200') : (isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200')}`}>
+                         <div className="flex justify-between items-center mb-1.5">
+                            <label className="flex items-center gap-2 text-xs font-bold text-yellow-500 cursor-pointer select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={activeReferenceOverlays.he} 
+                                onChange={(e) => setActiveReferenceOverlays(prev => ({ ...prev, he: e.target.checked }))}
+                                className={`rounded text-yellow-600 focus:ring-yellow-500 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}
+                              />
+                              {t.showHe}
+                            </label>
+                           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">Noble Gas</span>
+                         </div>
+                         <div className="grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[11px] text-slate-400">
+                           <div className="flex justify-between"><span>Blue:</span><span className="font-bold">447.1 nm</span></div>
+                           <div className="flex justify-between"><span>Green:</span><span className="font-bold">501.6 nm</span></div>
+                           <div className="flex justify-between"><span>Yellow:</span><span className="font-bold text-yellow-500">587.6 nm</span></div>
+                           <div className="flex justify-between"><span>Red:</span><span className="font-bold text-red-500">667.8 nm</span></div>
+                         </div>
+                       </div>
+
+                       {/* Element: Mercury */}
+                       <div className={`rounded-xl p-3 border transition-colors ${activeReferenceOverlays.hg ? (isDark ? 'bg-purple-950/20 border-purple-500/30' : 'bg-purple-50/50 border-purple-200') : (isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200')}`}>
+                         <div className="flex justify-between items-center mb-1.5">
+                            <label className="flex items-center gap-2 text-xs font-bold text-purple-500 cursor-pointer select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={activeReferenceOverlays.hg} 
+                                onChange={(e) => setActiveReferenceOverlays(prev => ({ ...prev, hg: e.target.checked }))}
+                                className={`rounded text-purple-600 focus:ring-purple-500 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}
+                              />
+                              {t.showHg}
+                            </label>
+                           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">Metal Vapor</span>
+                         </div>
+                         <div className="grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[11px] text-slate-400">
+                           <div className="flex justify-between"><span>Violet:</span><span className="font-bold">404.7 nm</span></div>
+                           <div className="flex justify-between"><span>Blue:</span><span className="font-bold">435.8 nm</span></div>
+                           <div className="flex justify-between"><span>Green:</span><span className="font-bold text-green-500">546.1 nm</span></div>
+                           <div className="flex justify-between"><span>Yellow:</span><span className="font-bold text-yellow-500">579.0 nm</span></div>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 </>
                )}
 
                {/* EXPORT BUTTONS */}
@@ -2405,7 +3849,6 @@ export default function App() {
 
             </div>
           </div>
-        )}
       </div>
 
        {/* --- ABOUT MODAL --- */}
@@ -2428,7 +3871,7 @@ export default function App() {
                 <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="grid grid-cols-[80px_1fr] gap-y-2 text-sm items-center">
                         <span className="opacity-60 font-semibold">{t.version}</span>
-                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.0.1</span>
+                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.1.0</span>
                         
                         <span className="opacity-60 font-semibold">{t.author}</span>
                         <span>Cesar Cortes</span>
