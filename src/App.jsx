@@ -64,6 +64,8 @@ const REFERENCE_EMISSION_LINES = [
 // --- TRANSLATIONS DICTIONARY ---
 import { TRANSLATIONS } from './utils/translations';
 import { calculateNiceScale, solveLinearSystem, projectPointToSegmentT, getDistanceToSegment } from './utils/physicsMath';
+import { useStore } from './store/useStore';
+import Header from './components/Header';
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
 // Memoized to prevent layout thrashing. 
@@ -89,28 +91,24 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
 
 export default function App() {
   // --- STATE MANAGEMENT ---
-  
-  // NEW: Language State
-  const [language, setLanguage] = useState('en');
-  // CRITICAL FIX: Fallback to English if language is invalid to prevent blank screen crash
+  const language = useStore(state => state.language);
+  const setLanguage = useStore(state => state.setLanguage);
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
-  // NEW: FPS State (Default 30)
-  const [fps, setFps] = useState(30);
+  const fps = useStore(state => state.fps);
+  const setFps = useStore(state => state.setFps);
 
-  // NEW: Logo Error State (Fallback for Canvas/Preview)
-  const [logoError, setLogoError] = useState(false);
+  const logoError = useStore(state => state.logoError);
+  const setLogoError = useStore(state => state.setLogoError);
 
-  // NEW: Header Menu State
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const isMenuOpen = useStore(state => state.isMenuOpen);
+  const setIsMenuOpen = useStore(state => state.setIsMenuOpen);
   const menuRef = useRef(null);
 
-  // NEW: Multi-Object State with Mass
-  const [objects, setObjects] = useState([
-    { id: 'A', name: 'Object A', color: '#ef4444', points: [], mass: 1 }, // Red
-    { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }  // Blue
-  ]);
-  const [activeObjId, setActiveObjId] = useState('A');
+  const objects = useStore(state => state.objects);
+  const setObjects = useStore(state => state.setObjects);
+  const activeObjId = useStore(state => state.activeObjId);
+  const setActiveObjId = useStore(state => state.setActiveObjId);
 
   // DERIVED STATE: 'points' acts as a proxy for the active object's points OR the calculated COM
   const points = useMemo(() => {
@@ -139,56 +137,62 @@ export default function App() {
   }, [objects, activeObjId]);
 
   // PROXY SETTER: Updates only the active object within the objects array
-  const setPoints = useCallback((newPointsInput) => {
-    if (activeObjId === 'COM') return; // Cannot directly add points to the virtual COM object
-    setObjects(prevObjects => {
-      return prevObjects.map(obj => {
-        if (obj.id !== activeObjId) return obj;
-        
-        // Handle both value and function updates (standard useState behavior)
-        const nextPoints = typeof newPointsInput === 'function' 
-          ? newPointsInput(obj.points) 
-          : newPointsInput;
-          
-        return { ...obj, points: nextPoints };
-      });
-    });
-  }, [activeObjId]);
+  const setPoints = useStore(state => state.setPoints);
 
   const activeObjectColor = useMemo(() => {
     if (activeObjId === 'COM') return '#a855f7'; // Purple for COM
     return objects.find(o => o.id === activeObjId)?.color || '#ef4444';
   }, [objects, activeObjId]);
 
-  const [videoSrc, setVideoSrc] = useState(null);
-  const [imageSrc, setImageSrc] = useState(null);
-  const [imageObj, setImageObj] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [error, setError] = useState(null);
+  const videoSrc = useStore(state => state.videoSrc);
+  const setVideoSrc = useStore(state => state.setVideoSrc);
+  const imageSrc = useStore(state => state.imageSrc);
+  const setImageSrc = useStore(state => state.setImageSrc);
+  const imageObj = useStore(state => state.imageObj);
+  const setImageObj = useStore(state => state.setImageObj);
+  const isPlaying = useStore(state => state.isPlaying);
+  const setIsPlaying = useStore(state => state.setIsPlaying);
+  const error = useStore(state => state.error);
+  const setError = useStore(state => state.setError);
 
   // Overlay states
-  const [protractor, setProtractor] = useState(null);
-  const [tapeMeasure, setTapeMeasure] = useState(null);
-  const [showVelocityVectors, setShowVelocityVectors] = useState(false);
-  const [showAccelerationVectors, setShowAccelerationVectors] = useState(false);
-  const [vectorScale, setVectorScale] = useState(1.0);
+  const protractor = useStore(state => state.protractor);
+  const setProtractor = useStore(state => state.setProtractor);
+  const tapeMeasure = useStore(state => state.tapeMeasure);
+  const setTapeMeasure = useStore(state => state.setTapeMeasure);
+  const showVelocityVectors = useStore(state => state.showVelocityVectors);
+  const setShowVelocityVectors = useStore(state => state.setShowVelocityVectors);
+  const showAccelerationVectors = useStore(state => state.showAccelerationVectors);
+  const setShowAccelerationVectors = useStore(state => state.setShowAccelerationVectors);
+  const vectorScale = useStore(state => state.vectorScale);
+  const setVectorScale = useStore(state => state.setVectorScale);
 
   // Spectroscopy states
-  const [lineProfile, setLineProfile] = useState(null); // null or { p1: {x,y}, p2: {x,y}, spread: 5, channel: 'luma' }
-  const [wavelengthCalibration, setWavelengthCalibration] = useState(null); // null or { p1_wl: 400, p2_wl: 700 }
-  const [spectralMode, setSpectralMode] = useState('pixels'); // 'pixels', 'distance', or 'wavelength'
-  const [analysisChartMode, setAnalysisChartMode] = useState('kinematics'); // 'kinematics' or 'spectroscopy'
-  const [spectralData, setSpectralData] = useState([]); // Array of { distance, intensity, r, g, b }
-  const [activeReferenceOverlays, setActiveReferenceOverlays] = useState({ h2: false, he: false, hg: false });
-  const [activeClickTarget, setActiveClickTarget] = useState(null); // null, 'r1', or 'r2'
-  const [showGuidelines, setShowGuidelines] = useState(true); // default true
+  const lineProfile = useStore(state => state.lineProfile);
+  const setLineProfile = useStore(state => state.setLineProfile);
+  const wavelengthCalibration = useStore(state => state.wavelengthCalibration);
+  const setWavelengthCalibration = useStore(state => state.setWavelengthCalibration);
+  const spectralMode = useStore(state => state.spectralMode);
+  const setSpectralMode = useStore(state => state.setSpectralMode);
+  const analysisChartMode = useStore(state => state.analysisChartMode);
+  const setAnalysisChartMode = useStore(state => state.setAnalysisChartMode);
+  const spectralData = useStore(state => state.spectralData);
+  const setSpectralData = useStore(state => state.setSpectralData);
+  const activeReferenceOverlays = useStore(state => state.activeReferenceOverlays);
+  const setActiveReferenceOverlays = useStore(state => state.setActiveReferenceOverlays);
+  const activeClickTarget = useStore(state => state.activeClickTarget);
+  const setActiveClickTarget = useStore(state => state.setActiveClickTarget);
+  const showGuidelines = useStore(state => state.showGuidelines);
+  const setShowGuidelines = useStore(state => state.setShowGuidelines);
   
   // THEME STATE
-  const [theme, setTheme] = useState('dark');
+  const theme = useStore(state => state.theme);
+  const setTheme = useStore(state => state.setTheme);
   const isDark = theme === 'dark';
 
-  // NEW: About Modal State
-  const [showAboutModal, setShowAboutModal] = useState(false);
+  // About Modal State
+  const showAboutModal = useStore(state => state.showAboutModal);
+  const setShowAboutModal = useStore(state => state.setShowAboutModal);
 
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
   const toggleLanguage = () => setLanguage(l => l === 'en' ? 'es' : 'en');
@@ -257,58 +261,87 @@ export default function App() {
   };
 
   // VIEW STATE
-  const [viewMode, setViewMode] = useState('tracker');
-  const [graphMode, setGraphMode] = useState('position'); 
-  const [zeroTime, setZeroTime] = useState(true); 
+  const viewMode = useStore(state => state.viewMode);
+  const setViewMode = useStore(state => state.setViewMode);
+  const graphMode = useStore(state => state.graphMode);
+  const setGraphMode = useStore(state => state.setGraphMode);
+  const zeroTime = useStore(state => state.zeroTime);
+  const setZeroTime = useStore(state => state.setZeroTime);
 
   // Analysis State
-  const [fitModel, setFitModel] = useState('none'); 
-  const [legendPosition, setLegendPosition] = useState('top-left');
+  const fitModel = useStore(state => state.fitModel);
+  const setFitModel = useStore(state => state.setFitModel);
+  const legendPosition = useStore(state => state.legendPosition);
+  const setLegendPosition = useStore(state => state.setLegendPosition);
 
   // NEW: Data Cropping State
-  const [cropStart, setCropStart] = useState('');
-  const [cropEnd, setCropEnd] = useState('');
+  const cropStart = useStore(state => state.cropStart);
+  const setCropStart = useStore(state => state.setCropStart);
+  const cropEnd = useStore(state => state.cropEnd);
+  const setCropEnd = useStore(state => state.setCropEnd);
 
-  const [isCalibrating, setIsCalibrating] = useState(false); 
-  const [calibrationPoints, setCalibrationPoints] = useState([]); 
-  const [pixelsPerMeter, setPixelsPerMeter] = useState(null); 
-  const [showInputModal, setShowInputModal] = useState(false);
-  const [realDistanceInput, setRealDistanceInput] = useState("1.0");
-  const [isScaleVisible, setIsScaleVisible] = useState(true);
+  const isCalibrating = useStore(state => state.isCalibrating);
+  const setIsCalibrating = useStore(state => state.setIsCalibrating);
+  const calibrationPoints = useStore(state => state.calibrationPoints);
+  const setCalibrationPoints = useStore(state => state.setCalibrationPoints);
+  const pixelsPerMeter = useStore(state => state.pixelsPerMeter);
+  const setPixelsPerMeter = useStore(state => state.setPixelsPerMeter);
+  const showInputModal = useStore(state => state.showInputModal);
+  const setShowInputModal = useStore(state => state.setShowInputModal);
+  const realDistanceInput = useStore(state => state.realDistanceInput);
+  const setRealDistanceInput = useStore(state => state.setRealDistanceInput);
+  const isScaleVisible = useStore(state => state.isScaleVisible);
+  const setIsScaleVisible = useStore(state => state.setIsScaleVisible);
 
-  const [isSettingOrigin, setIsSettingOrigin] = useState(false);
-  const [origin, setOrigin] = useState(null); 
-  const [originAngle, setOriginAngle] = useState(0); 
+  const isSettingOrigin = useStore(state => state.isSettingOrigin);
+  const setIsSettingOrigin = useStore(state => state.setIsSettingOrigin);
+  const origin = useStore(state => state.origin);
+  const setOrigin = useStore(state => state.setOrigin);
+  const originAngle = useStore(state => state.originAngle);
+  const setOriginAngle = useStore(state => state.setOriginAngle);
 
   // NEW: Master Frame Counter (Digital Twin for Robust Stepping)
-  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+  const currentFrameIndex = useStore(state => state.currentFrameIndex);
+  const setCurrentFrameIndex = useStore(state => state.setCurrentFrameIndex);
 
-  const [isTracking, setIsTracking] = useState(false);
+  const isTracking = useStore(state => state.isTracking);
+  const setIsTracking = useStore(state => state.setIsTracking);
   // NEW: Reticle State for Phase 1 Step 2
-  const [reticlePos, setReticlePos] = useState(null);
+  const reticlePos = useStore(state => state.reticlePos);
+  const setReticlePos = useStore(state => state.setReticlePos);
 
   // Zoom & Dimensions
-  const [zoom, setZoom] = useState(1.0);
-  const [videoDims, setVideoDims] = useState({ w: 0, h: 0 }); 
+  const zoom = useStore(state => state.zoom);
+  const setZoom = useStore(state => state.setZoom);
+  const videoDims = useStore(state => state.videoDims);
+  const setVideoDims = useStore(state => state.setVideoDims);
 
-  const [dragState, setDragState] = useState(null); 
-  const [draggedPointIndex, setDraggedPointIndex] = useState(null);
+  const dragState = useStore(state => state.dragState);
+  const setDragState = useStore(state => state.setDragState);
+  const draggedPointIndex = useStore(state => state.draggedPointIndex);
+  const setDraggedPointIndex = useStore(state => state.setDraggedPointIndex);
   
   // NEW: Ref to track drag distance for Tap vs Drag detection
   const dragStartRef = useRef({ x: 0, y: 0, time: 0 });
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const lineProfileStartRef = useRef(null);
   
-  const [isHoveringTrash, setIsHoveringTrash] = useState(false);
+  const isHoveringTrash = useStore(state => state.isHoveringTrash);
+  const setIsHoveringTrash = useStore(state => state.setIsHoveringTrash);
   
-  const [isHoveringCanvas, setIsHoveringCanvas] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const isHoveringCanvas = useStore(state => state.isHoveringCanvas);
+  const setIsHoveringCanvas = useStore(state => state.setIsHoveringCanvas);
+  const mousePos = useStore(state => state.mousePos);
+  const setMousePos = useStore(state => state.setMousePos);
 
-  const [uncertaintyPx, setUncertaintyPx] = useState(10);
+  const uncertaintyPx = useStore(state => state.uncertaintyPx);
+  const setUncertaintyPx = useStore(state => state.setUncertaintyPx);
 
   // Timeline State
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
+  const duration = useStore(state => state.duration);
+  const setDuration = useStore(state => state.setDuration);
+  const currentTime = useStore(state => state.currentTime);
+  const setCurrentTime = useStore(state => state.setCurrentTime);
   const currentTimeRef = useRef(0);
   useEffect(() => {
     currentTimeRef.current = currentTime;
@@ -326,108 +359,18 @@ export default function App() {
   const fileInputRef = useRef(null); // Ref for file input
 
   // NEW: State to track if data was restored from persistence
-  const [hasRestoredData, setHasRestoredData] = useState(false);
+  const hasRestoredData = useStore(state => state.hasRestoredData);
+  const setHasRestoredData = useStore(state => state.setHasRestoredData);
   
   // NEW: Ref for custom touch panning
   const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   // --- GRAPH STATE ---
-  const [plotX, setPlotX] = useState('time');
-  const [plotY, setPlotY] = useState('x');
+  const plotX = useStore(state => state.plotX);
+  const setPlotX = useStore(state => state.setPlotX);
+  const plotY = useStore(state => state.plotY);
+  const setPlotY = useStore(state => state.setPlotY);
 
-  // --- 0. PERSISTENCE LOGIC (NEW) ---
-
-  // Auto-Load on Mount
-  useEffect(() => {
-    const savedData = localStorage.getItem('physTracker_autosave');
-    if (savedData) {
-        try {
-            const data = JSON.parse(savedData);
-            
-            // MIGRATION LOGIC: Handle old saves with single 'points' and add default mass
-            if (data.objects) {
-                const migratedObjects = data.objects.map(o => ({ ...o, mass: o.mass !== undefined ? o.mass : 1 }));
-                setObjects(migratedObjects);
-                if (data.activeObjId) setActiveObjId(data.activeObjId);
-            } else if (data.points) {
-                setObjects([
-                    { id: 'A', name: 'Object A', color: '#ef4444', points: data.points, mass: 1 },
-                    { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
-                ]);
-            }
-
-            // Flag if we have ANY data
-            const hasData = (data.objects && data.objects.some(o => o.points.length > 0)) || (data.points && data.points.length > 0);
-            if (hasData) {
-                setHasRestoredData(true);
-            }
-
-            if (data.calibrationPoints) setCalibrationPoints(data.calibrationPoints);
-            if (data.pixelsPerMeter) setPixelsPerMeter(data.pixelsPerMeter);
-            if (data.origin) setOrigin(data.origin);
-            if (data.originAngle) setOriginAngle(data.originAngle);
-            if (data.zeroTime !== undefined) setZeroTime(data.zeroTime);
-            if (data.fitModel) setFitModel(data.fitModel);
-            if (data.uncertaintyPx) setUncertaintyPx(data.uncertaintyPx);
-            if (data.viewMode) setViewMode(data.viewMode);
-            if (data.language) setLanguage(data.language); 
-            if (data.fps) setFps(data.fps); // Restore FPS
-            if (data.cropStart !== undefined) setCropStart(data.cropStart);
-            if (data.cropEnd !== undefined) setCropEnd(data.cropEnd);
-            if (data.protractor !== undefined) setProtractor(data.protractor);
-            if (data.tapeMeasure !== undefined) setTapeMeasure(data.tapeMeasure);
-            if (data.showVelocityVectors !== undefined) setShowVelocityVectors(data.showVelocityVectors);
-            if (data.showAccelerationVectors !== undefined) setShowAccelerationVectors(data.showAccelerationVectors);
-            if (data.vectorScale !== undefined) setVectorScale(data.vectorScale);
-            if (data.lineProfile !== undefined) setLineProfile(data.lineProfile);
-            if (data.wavelengthCalibration !== undefined) setWavelengthCalibration(data.wavelengthCalibration);
-            if (data.spectralMode !== undefined) setSpectralMode(data.spectralMode);
-            if (data.activeReferenceOverlays !== undefined) {
-              setActiveReferenceOverlays(data.activeReferenceOverlays);
-            } else {
-              setActiveReferenceOverlays({ h2: false, he: false, hg: false });
-            }
-            if (data.showGuidelines !== undefined) {
-              setShowGuidelines(data.showGuidelines);
-            } else {
-              setShowGuidelines(true);
-            }
-        } catch (e) {
-            console.error("Failed to restore autosave", e);
-        }
-    }
-  }, []);
-
-  // Auto-Save on Change
-  useEffect(() => {
-    const stateToSave = {
-        objects, // Saving full objects array
-        activeObjId,
-        calibrationPoints,
-        pixelsPerMeter,
-        origin,
-        originAngle,
-        zeroTime,
-        fitModel,
-        uncertaintyPx,
-        viewMode,
-        language,
-        fps, // Save FPS
-        cropStart,
-        cropEnd,
-        protractor,
-        tapeMeasure,
-        showVelocityVectors,
-        showAccelerationVectors,
-        vectorScale,
-        lineProfile,
-        wavelengthCalibration,
-        spectralMode,
-        activeReferenceOverlays,
-        showGuidelines
-    };
-    localStorage.setItem('physTracker_autosave', JSON.stringify(stateToSave));
-  }, [objects, activeObjId, calibrationPoints, pixelsPerMeter, origin, originAngle, zeroTime, fitModel, uncertaintyPx, viewMode, language, fps, cropStart, cropEnd, protractor, tapeMeasure, showVelocityVectors, showAccelerationVectors, vectorScale, lineProfile, wavelengthCalibration, spectralMode, activeReferenceOverlays, showGuidelines]);
 
   const saveProject = () => {
     const stateToSave = {
@@ -2518,140 +2461,14 @@ export default function App() {
   return (
     <div className={`flex flex-col h-screen font-sans transition-colors duration-200 ${styles.bg} ${styles.text}`}>
       {/* HEADER WITH VIEW SWITCHER */}
-      <div className={`p-4 border-b flex justify-between items-center shrink-0 h-16 ${styles.panel}`}>
-        <div className="flex items-center gap-4">
-          
-          {/* LOGO IMAGE with Fallback */}
-          {!logoError ? (
-             <img 
-               src={isDark ? "/logo-dark.png" : "/logo-light.png"} 
-               alt="PhysTracker" 
-               className="h-10 w-auto object-contain" 
-               onError={() => setLogoError(true)}
-             />
-          ) : (
-             <h1 className="text-xl font-bold">
-                <span className={isDark ? "text-cyan-400" : "text-cyan-600"}>Phys</span>
-                <span className={isDark ? "text-slate-200" : "text-slate-700"}>Tracker</span>
-             </h1>
-          )}
-
-          <div className={`flex rounded p-1 border ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
-            <button onClick={() => setViewMode('tracker')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'tracker' ? (isDark ? 'bg-slate-700 text-white' : 'bg-white shadow-sm text-slate-900') : styles.textSecondary + ' hover:' + styles.text}`}>{t.trackerMode}</button>
-            <button onClick={() => setViewMode('analysis')} className={`px-4 py-1 text-sm rounded transition ${viewMode === 'analysis' ? (isDark ? 'bg-slate-700 text-blue-400' : 'bg-white shadow-sm text-blue-600') : styles.textSecondary + ' hover:' + styles.text}`}>{t.analysisMode}</button>
-          </div>
-          
-          {/* NEW: Object Switcher including COM */}
-          <div className={`flex rounded p-1 border ml-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
-              <button onClick={() => handleObjectSwitch('A')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'A' ? 'bg-red-500 text-white shadow-sm' : styles.textSecondary}`}>
-                  <Users size={14}/> {t.objectA}
-              </button>
-              <button onClick={() => handleObjectSwitch('B')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'B' ? 'bg-blue-500 text-white shadow-sm' : styles.textSecondary}`}>
-                  <Users size={14}/> {t.objectB}
-              </button>
-              <button onClick={() => handleObjectSwitch('COM')} className={`px-3 py-1 text-sm rounded flex items-center gap-1 transition ${activeObjId === 'COM' ? 'bg-purple-500 text-white shadow-sm' : styles.textSecondary}`}>
-                  <Activity size={14}/> {t.comShort}
-              </button>
-          </div>
-
-        </div>
-        
-        <div className="flex gap-4 items-center">
-          
-          {viewMode === 'tracker' && (
-            <>
-              <button 
-                  onClick={() => { setIsTracking(!isTracking); setIsSettingOrigin(false); setIsCalibrating(false); }} 
-                  disabled={activeObjId === 'COM'}
-                  className={`flex items-center gap-2 px-3 py-2 rounded transition ${activeObjId === 'COM' ? 'opacity-50 cursor-not-allowed ' + styles.buttonSecondary : isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}
-                  title={activeObjId === 'COM' ? t.comShort : (isTracking ? t.stopTracking : t.startTracking)}
-              > 
-                  <Target size={20} /> 
-              </button>
-
-              <button 
-                  onClick={() => { 
-                    if (!origin && videoDims.w > 0) {
-                       setOrigin({ x: videoDims.w / 2, y: videoDims.h / 2 });
-                    }
-                    setIsSettingOrigin(true); 
-                    setIsCalibrating(false); 
-                    setIsTracking(false); 
-                    setShowInputModal(false); 
-                  }} 
-                  className={`flex items-center gap-2 px-3 py-2 rounded transition ${isSettingOrigin ? 'bg-blue-600 text-white' : styles.buttonSecondary}`}
-                  title={origin ? t.moveOrigin : t.setOrigin}
-              > 
-                  <Move size={20} /> 
-              </button>
-
-              <button 
-                  onClick={handleScaleButtonClick} 
-                  className={`flex items-center gap-2 px-3 py-2 rounded transition ${isCalibrating ? 'bg-green-600 text-white' : pixelsPerMeter ? 'bg-green-100 text-green-700 border border-green-200' : styles.buttonSecondary}`}
-                  title={isCalibrating ? t.enterDistance : pixelsPerMeter ? (isScaleVisible ? t.hideScale : t.showScale) : t.setScale}
-              > 
-                  {isCalibrating ? <CheckCircle2 size={20} /> : (pixelsPerMeter ? (isScaleVisible ? <Eye size={20} /> : <EyeOff size={20} />) : <Ruler size={20} />)} 
-              </button>
-            </>
-          )}
-          
-          <label 
-              className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition ${styles.buttonSecondary}`}
-              title={t.uploadVideo}
-          > 
-              <Upload size={20} /> 
-              <input type="file" accept="video/*,image/*" onChange={handleFileUpload} className="hidden" /> 
-          </label>
-           
-           {/* Waiting for Video Alert (Moved here) */}
-           {hasRestoredData && !videoSrc && !imageSrc && (
-                 <span className="text-xs text-orange-400 animate-pulse font-semibold flex items-center gap-1 hidden lg:flex">
-                     <AlertCircle size={16} /> {t.waitingVideo}
-                 </span>
-             )}
-
-          {/* NEW: More Options Dropdown */}
-          <div className="relative" ref={menuRef}>
-            <button 
-              onClick={() => setIsMenuOpen(!isMenuOpen)} 
-              className={`p-2 rounded-full transition ${isMenuOpen ? 'bg-slate-200 dark:bg-slate-700' : styles.buttonSecondary}`}
-              title={t.moreOptions}
-            >
-              <Menu size={20} />
-            </button>
-            
-            {isMenuOpen && (
-              <div className={`absolute right-0 top-12 w-56 rounded-xl shadow-xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 ${styles.panel}`}>
-                <div className="p-1 flex flex-col gap-1">
-                   <button onClick={() => {saveProject(); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition ${styles.tableRow}`}>
-                      <Save size={16} className="text-blue-500"/> {t.saveProject}
-                   </button>
-                   <label className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition cursor-pointer ${styles.tableRow}`}>
-                      <FolderOpen size={16} className="text-green-500"/> {t.loadProject}
-                      <input type="file" ref={fileInputRef} onChange={(e) => {loadProject(e); setIsMenuOpen(false);}} accept=".json" className="hidden" />
-                   </label>
-                   <button onClick={() => {clearProject(); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500`}>
-                      <RefreshCw size={16} /> {t.resetData}
-                   </button>
-                   
-                   <div className={`h-px my-1 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
-                   
-                   <button onClick={() => {toggleTheme(); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition ${styles.tableRow}`}>
-                      {isDark ? <Sun size={16} className="text-yellow-400"/> : <Moon size={16} className="text-indigo-400"/>} {t.switchTheme}
-                   </button>
-                   <button onClick={() => {toggleLanguage(); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition ${styles.tableRow}`}>
-                      <Languages size={16} className="text-purple-500"/> {language === 'en' ? 'Español' : 'English'}
-                   </button>
-                   <button onClick={() => {setShowAboutModal(true); setIsMenuOpen(false);}} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 rounded-lg transition ${styles.tableRow}`}>
-                      <Info size={16} className="text-cyan-500"/> {t.about}
-                   </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
+      <Header 
+        handleObjectSwitch={handleObjectSwitch}
+        handleScaleButtonClick={handleScaleButtonClick}
+        handleFileUpload={handleFileUpload}
+        saveProject={saveProject}
+        loadProject={loadProject}
+        clearProject={clearProject}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         {/* VIEW 1: TRACKER MODE */}
