@@ -2307,6 +2307,7 @@ export default function App() {
               uncertaintyMeters={uncertaintyMeters}
               resetScale={resetScale}
               downloadCSV={downloadCSV}
+              points={points}
             />
         </div>
         {/* VIEW 2: ANALYSIS MODE (Full Screen) */}
@@ -2317,6 +2318,7 @@ export default function App() {
           fitEquation={fitEquation}
           activeObjectColor={activeObjectColor}
           downloadCSV={downloadCSV}
+          points={points}
         />
       </div>
 

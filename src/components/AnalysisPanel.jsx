@@ -50,6 +50,7 @@ export default function AnalysisPanel({
   fitEquation,
   activeObjectColor,
   downloadCSV,
+  points,
 }) {
   // Zustand Store Selectors
   const theme = useStore((state) => state.theme);
@@ -69,7 +70,6 @@ export default function AnalysisPanel({
   const activeReferenceOverlays = useStore((state) => state.activeReferenceOverlays) || { h2: false, he: false, hg: false };
   const fitModel = useStore((state) => state.fitModel);
   const legendPosition = useStore((state) => state.legendPosition);
-  const points = useStore((state) => state.points);
 
   const setAnalysisChartMode = useStore((state) => state.setAnalysisChartMode);
   const setPlotX = useStore((state) => state.setPlotX);

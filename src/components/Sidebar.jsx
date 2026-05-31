@@ -11,13 +11,13 @@ export default function Sidebar({
   uncertaintyMeters,
   resetScale,
   downloadCSV,
+  points,
 }) {
   const theme = useStore((state) => state.theme);
   const language = useStore((state) => state.language);
   const activeObjId = useStore((state) => state.activeObjId);
   const fps = useStore((state) => state.fps);
   const objects = useStore((state) => state.objects);
-  const points = useStore((state) => state.points);
   const pixelsPerMeter = useStore((state) => state.pixelsPerMeter);
   const zeroTime = useStore((state) => state.zeroTime);
   const uncertaintyPx = useStore((state) => state.uncertaintyPx);
