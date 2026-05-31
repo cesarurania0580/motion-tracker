@@ -137,7 +137,12 @@ const useStore = create((set, get) => ({
   ...getInitialState(),
 
   // SETTERS & MUTATORS
-  setLanguage: (language) => set({ language }),
+  setLanguage: (languageInput) => {
+    const nextLanguage = typeof languageInput === 'function'
+      ? languageInput(get().language)
+      : languageInput;
+    set({ language: nextLanguage });
+  },
   setTheme: (theme) => set({ theme }),
   setViewMode: (viewMode) => set({ viewMode }),
   setIsMenuOpen: (isMenuOpen) => set({ isMenuOpen }),
@@ -183,7 +188,12 @@ const useStore = create((set, get) => ({
   setCurrentFrameIndex: (currentFrameIndex) => set({ currentFrameIndex }),
   setIsTracking: (isTracking) => set({ isTracking }),
   setReticlePos: (reticlePos) => set({ reticlePos }),
-  setZoom: (zoom) => set({ zoom }),
+  setZoom: (zoomInput) => {
+    const nextZoom = typeof zoomInput === 'function'
+      ? zoomInput(get().zoom)
+      : zoomInput;
+    set({ zoom: nextZoom });
+  },
   setVideoDims: (videoDims) => set({ videoDims }),
   
   setDragState: (dragState) => set({ dragState }),
