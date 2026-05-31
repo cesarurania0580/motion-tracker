@@ -80,9 +80,10 @@ export default function App() {
 
   // DERIVED STATE: 'points' acts as a proxy for the active object's points OR the calculated COM
   const points = useMemo(() => {
+    const safeObjects = objects || [];
     if (activeObjId === 'COM') {
-      const objA = objects.find(o => o.id === 'A') || { points: [], mass: 1 };
-      const objB = objects.find(o => o.id === 'B') || { points: [], mass: 1 };
+      const objA = safeObjects.find(o => o.id === 'A') || { points: [], mass: 1 };
+      const objB = safeObjects.find(o => o.id === 'B') || { points: [], mass: 1 };
       const mA = typeof objA.mass === 'number' ? objA.mass : 1;
       const mB = typeof objB.mass === 'number' ? objB.mass : 1;
       const comPoints = [];
@@ -101,7 +102,7 @@ export default function App() {
       });
       return comPoints;
     }
-    return objects.find(o => o.id === activeObjId)?.points || [];
+    return safeObjects.find(o => o.id === activeObjId)?.points || [];
   }, [objects, activeObjId]);
 
   // PROXY SETTER: Updates only the active object within the objects array
@@ -109,7 +110,7 @@ export default function App() {
 
   const activeObjectColor = useMemo(() => {
     if (activeObjId === 'COM') return '#a855f7'; // Purple for COM
-    return objects.find(o => o.id === activeObjId)?.color || '#ef4444';
+    return (objects || []).find(o => o.id === activeObjId)?.color || '#ef4444';
   }, [objects, activeObjId]);
 
   const videoSrc = useStore(state => state.videoSrc);

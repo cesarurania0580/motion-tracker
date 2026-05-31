@@ -66,7 +66,7 @@ export default function AnalysisPanel({
   const spectralMode = useStore((state) => state.spectralMode);
   const lineProfile = useStore((state) => state.lineProfile);
   const spectralData = useStore((state) => state.spectralData);
-  const activeReferenceOverlays = useStore((state) => state.activeReferenceOverlays);
+  const activeReferenceOverlays = useStore((state) => state.activeReferenceOverlays) || { h2: false, he: false, hg: false };
   const fitModel = useStore((state) => state.fitModel);
   const legendPosition = useStore((state) => state.legendPosition);
   const points = useStore((state) => state.points);
