@@ -245,6 +245,9 @@ const useStore = create((set, get) => ({
 
   // Reset state to default
   resetProject: () => {
+    if (typeof window !== 'undefined') {
+      window.isResetting = true;
+    }
     set({
       objects: [
         { id: 'A', name: 'Object A', color: '#ef4444', points: [], mass: 1 },
@@ -285,6 +288,9 @@ const useStore = create((set, get) => ({
 
 // Setup auto-saving subscription
 useStore.subscribe((state) => {
+  if (typeof window !== 'undefined' && window.isResetting) {
+    return;
+  }
   const stateToSave = {
     objects: state.objects,
     activeObjId: state.activeObjId,

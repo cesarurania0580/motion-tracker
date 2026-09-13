@@ -302,7 +302,7 @@ export default function AnalysisPanel({
             
             ctx.fillText(equationText, boxX + 50, boxY + 100);
 
-            ctx.fillText(`R² = ${fitEquation.r2.toFixed(4)}`, boxX + 50, boxY + 130); 
+            ctx.fillText(`R² = ${Number.isFinite(fitEquation.r2) ? fitEquation.r2.toFixed(4) : "N/A"}`, boxX + 50, boxY + 130);
         }
 
         const pngUrl = canvas.toDataURL("image/png");
@@ -584,6 +584,11 @@ export default function AnalysisPanel({
                     </select>
                  </div>
                </div>
+               {fitModel === 'sinusoidal' && (!fitEquation || fitEquation.warning) && (
+                 <p role="status" className={`text-sm ${styles.textSecondary}`}>
+                   {fitEquation ? t[fitEquation.warning] : t.fitUnavailable}
+                 </p>
+               )}
                {fitEquation && (
                  <div className={`rounded-xl border p-4 animate-in fade-in slide-in-from-right-4 ${isDark ? 'bg-slate-900/50 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
                    <div className={`font-mono font-bold text-sm mb-4 pb-2 border-b ${isDark ? 'text-orange-400 border-slate-700' : 'text-orange-600 border-slate-200'}`}> {fitEquation.text} </div>
@@ -610,7 +615,7 @@ export default function AnalysisPanel({
                       
                       <div className="flex justify-between items-center pt-2 border-t border-slate-700/50">
                         <span className={styles.textSecondary}>R²</span> 
-                        <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.r2 ? fitEquation.r2.toFixed(4) : "N/A"}</span>
+                        <span className={`font-mono text-lg ${styles.text}`}>{Number.isFinite(fitEquation.r2) ? fitEquation.r2.toFixed(4) : "N/A"}</span>
                       </div>
                    </div>
                  </div>

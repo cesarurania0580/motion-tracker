@@ -32,7 +32,7 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
 
 PureVideoPlayer.displayName = 'PureVideoPlayer';
 
-export default function VideoCanvas({ points }) {
+export default function VideoCanvas({ points, videoRef, autotracking }) {
   // Zustand Store Selectors
   const theme = useStore((state) => state.theme);
   const language = useStore((state) => state.language);
@@ -105,7 +105,6 @@ export default function VideoCanvas({ points }) {
   const uncertaintyPx = useStore((state) => state.uncertaintyPx);
 
   // Local DOM Refs
-  const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const trashRef = useRef(null);
@@ -664,7 +663,7 @@ export default function VideoCanvas({ points }) {
       }
     }
 
-  }, [points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor, t, activeObjId, protractor, tapeMeasure, showVelocityVectors, showAccelerationVectors, vectorScale, pixelsPerMeter, lineProfile, imageObj, wavelengthCalibration, showGuidelines, isDark]);
+  }, [videoRef, points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor, t, activeObjId, protractor, tapeMeasure, showVelocityVectors, showAccelerationVectors, vectorScale, pixelsPerMeter, lineProfile, imageObj, wavelengthCalibration, showGuidelines, isDark]);
 
   const sampleLineIntensity = useCallback(() => {
     const video = videoRef.current;
@@ -762,7 +761,7 @@ export default function VideoCanvas({ points }) {
     }
     
     setSpectralData(results);
-  }, [lineProfile, videoDims, imageObj, setSpectralData]);
+  }, [videoRef, lineProfile, videoDims, imageObj, setSpectralData]);
 
   // Sync sampling on video updates or line profile changes
   useEffect(() => {
@@ -815,13 +814,13 @@ export default function VideoCanvas({ points }) {
         videoEl.cancelVideoFrameCallback(videoCallbackRef.current);
       }
     };
-  }, [isPlaying, renderFrame, setCurrentTime]);
+  }, [videoRef, isPlaying, renderFrame, setCurrentTime]);
 
   useEffect(() => {
     if (videoRef.current && videoSrc) {
       videoRef.current.load();
     }
-  }, [videoSrc]);
+  }, [videoRef, videoSrc]);
 
   useEffect(() => {
     if (isTracking && !reticlePos && videoDims.w > 0) {
@@ -867,6 +866,7 @@ export default function VideoCanvas({ points }) {
     if ((!videoRef.current && !imageObj) || showInputModal) return;
 
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    if (autotracking.enabled) { e.preventDefault(); autotracking.select(x,y); return; }
     
     const isTouch = e.pointerType === 'touch' || e.pointerType === 'pen';
     const hitRadius = (isTouch ? 45 : 15) / zoom; 
@@ -1237,7 +1237,7 @@ export default function VideoCanvas({ points }) {
         setCurrentTime(targetTime);
       }
     } 
-  }, [fps, currentFrameIndex, imageObj, setIsPlaying, setCurrentFrameIndex, setCurrentTime]);
+  }, [videoRef, fps, currentFrameIndex, imageObj, setIsPlaying, setCurrentFrameIndex, setCurrentTime]);
 
   const stepBackward = useCallback(() => { 
     if (imageObj) return;
@@ -1253,7 +1253,7 @@ export default function VideoCanvas({ points }) {
       videoRef.current.currentTime = targetTime;
       setCurrentTime(targetTime);
     } 
-  }, [fps, currentFrameIndex, imageObj, setIsPlaying, setCurrentFrameIndex, setCurrentTime]);
+  }, [videoRef, fps, currentFrameIndex, imageObj, setIsPlaying, setCurrentFrameIndex, setCurrentTime]);
 
   const handleSeeked = useCallback(() => {
     if (imageObj) return;
@@ -1262,7 +1262,7 @@ export default function VideoCanvas({ points }) {
       setCurrentTime(t_val);
       renderFrame();
     }
-  }, [renderFrame, imageObj, setCurrentTime]);
+  }, [videoRef, renderFrame, imageObj, setCurrentTime]);
 
   const handleLoadedData = useCallback(() => {
     renderFrame();
@@ -1319,7 +1319,7 @@ export default function VideoCanvas({ points }) {
         setTimeout(() => renderFrame(), 100);
       }
     } 
-  }, [renderFrame, setDuration, setVideoDims, setZoom]);
+  }, [videoRef, renderFrame, setDuration, setVideoDims, setZoom]);
 
   const handleVideoEnded = useCallback(() => setIsPlaying(false), [setIsPlaying]);
   const handleVideoError = useCallback(() => setError("Error loading video."), [setError]);
@@ -1332,7 +1332,7 @@ export default function VideoCanvas({ points }) {
         setCurrentFrameIndex(Math.floor(t_val * fps + 0.001));
       }
     }
-  }, [fps, isPlaying, setCurrentTime, setCurrentFrameIndex]);
+  }, [videoRef, fps, isPlaying, setCurrentTime, setCurrentFrameIndex]);
 
   const videoElement = useMemo(() => (
     <PureVideoPlayer 
@@ -1345,7 +1345,7 @@ export default function VideoCanvas({ points }) {
       onTimeUpdate={handleTimeUpdate}
       onSeeked={handleSeeked} 
     />
-  ), [videoSrc, handleVideoLoaded, handleLoadedData, handleVideoEnded, handleVideoError, handleTimeUpdate, handleSeeked]);
+  ), [videoRef, videoSrc, handleVideoLoaded, handleLoadedData, handleVideoEnded, handleVideoError, handleTimeUpdate, handleSeeked]);
 
   return (
     <div className={`flex-1 flex flex-col min-w-0 ${styles.bg} relative`}>
@@ -1429,6 +1429,18 @@ export default function VideoCanvas({ points }) {
             style={{ width: Math.floor(videoDims.w * zoom), height: Math.floor(videoDims.h * zoom) }}
           >
             {videoSrc && videoElement}
+            {autotracking.enabled && autotracking.target && autotracking.status!=='lost' && <div aria-hidden="true"
+              className="absolute border border-dashed border-cyan-400 pointer-events-none z-20"
+              style={{left:(autotracking.target.searchX-autotracking.target.radiusX)*zoom,
+                top:(autotracking.target.searchY-autotracking.target.radiusY)*zoom,
+                width:autotracking.target.radiusX*2*zoom,height:autotracking.target.radiusY*2*zoom}} />}
+
+            {autotracking.enabled && autotracking.target && <div aria-hidden="true"
+              className={`absolute rounded-full border-2 ${autotracking.status==='lost'?'border-red-400':'border-green-400'} pointer-events-none z-20`}
+              style={{left:(autotracking.target.x-autotracking.target.width/2)*zoom,
+                top:(autotracking.target.y-autotracking.target.height/2)*zoom,
+                width:autotracking.target.width*zoom,height:autotracking.target.height*zoom}} />}
+
             <canvas 
               ref={canvasRef} 
               width={Math.floor(videoDims.w * zoom)} 
@@ -1469,9 +1481,9 @@ export default function VideoCanvas({ points }) {
           <Undo2 size={20} /> 
         </button>
         <div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'} ${imageObj ? 'opacity-40 pointer-events-none' : ''}`}> 
-          <button onClick={stepBackward} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame}> <SkipBack size={20} /> </button> 
-          <button onClick={togglePlay} disabled={!!imageObj} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-900/20" title={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button> 
-          <button onClick={stepForward} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame}> <SkipForward size={20} /> </button> 
+          <button onClick={() => {autotracking.navigate(); stepBackward();}} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame}> <SkipBack size={20} /> </button>
+          <button onClick={() => {autotracking.navigate(); togglePlay();}} disabled={!!imageObj} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-900/20" title={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button>
+          <button onClick={() => {autotracking.navigate(); stepForward();}} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame}> <SkipForward size={20} /> </button>
         </div>
         <div className="flex-1 max-w-xl mx-4 flex items-center gap-3"> 
           <span className={`text-xs font-mono w-12 text-right ${styles.textSecondary}`}>{formatTime(currentTime)}</span> 
@@ -1481,7 +1493,7 @@ export default function VideoCanvas({ points }) {
             max={duration || 100} 
             step="0.01" 
             value={currentTime} 
-            onChange={handleSeek} 
+            onChange={(e) => {autotracking.navigate(); handleSeek(e);}}
             disabled={!!imageObj} 
             className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-30 disabled:pointer-events-none" 
           /> 

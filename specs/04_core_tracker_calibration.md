@@ -70,3 +70,18 @@ const rows = positionData.map(row => `${row.time},${row.x},${row.y},${row.error}
 3. Converts text, gridlines, and path styles into standard vector formats.
 4. Serializes the SVG into a Data URL: `"data:image/svg+xml;utf8," + encodeURIComponent(svgString)`.
 5. Loads the URL into an in-memory HTML5 Image element, draws it onto an offscreen canvas at high resolution, and triggers a download of a raster `.png` image.
+
+## 6. Calibration regression acceptance
+
+- CAL-01: App event handlers reference declared bindings. The no-undef regression
+  check must run even while App's historical general lint-disable remains.
+- CAL-02: With media loaded and no scale set, Set Scale displays a green bar with
+  two draggable handles and Enter Distance. It must not throw a runtime error.
+- CAL-03: Moving either handle updates the bar; saving a positive real distance
+  establishes pixels per meter. Hide/Show Scale changes visibility without
+  losing calibration. Activating calibration cancels automatic tracking.
+
+Regression: missing `setIsSettingOrigin` binding aborted scale initialization
+before endpoints were created. Present in the pre-integration local commit
+98ed63e as well as the initial integration. Fix: restore the Zustand binding.
+Validation evidence: `docs/testing/autotracking.md`, calibration follow-up section.

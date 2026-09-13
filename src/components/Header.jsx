@@ -1,13 +1,15 @@
+import TrackingModeMenu from './TrackingModeMenu';
 import React, { useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { TRANSLATIONS } from '../utils/translations';
 import { 
   Upload, Save, FolderOpen, RefreshCw, Sun, Moon, 
-  Languages, Info, Target, Move, Ruler, Eye, EyeOff, 
+  Languages, Info, Move, Ruler, Eye, EyeOff,
   CheckCircle2, Menu, AlertCircle, Users, Activity 
 } from 'lucide-react';
 
 export default function Header({
+  autotracking,
   handleObjectSwitch,
   handleScaleButtonClick,
   handleFileUpload,
@@ -19,7 +21,6 @@ export default function Header({
   const language = useStore((state) => state.language);
   const viewMode = useStore((state) => state.viewMode);
   const activeObjId = useStore((state) => state.activeObjId);
-  const isTracking = useStore((state) => state.isTracking);
   const isSettingOrigin = useStore((state) => state.isSettingOrigin);
   const isCalibrating = useStore((state) => state.isCalibrating);
   const origin = useStore((state) => state.origin);
@@ -118,14 +119,7 @@ export default function Header({
         
         {viewMode === 'tracker' && (
           <>
-            <button 
-                onClick={() => { setIsTracking(!isTracking); setIsSettingOrigin(false); setIsCalibrating(false); }} 
-                disabled={activeObjId === 'COM'}
-                className={`flex items-center gap-2 px-3 py-2 rounded transition ${activeObjId === 'COM' ? 'opacity-50 cursor-not-allowed ' + styles.buttonSecondary : isTracking ? 'bg-red-600 animate-pulse text-white' : styles.buttonSecondary}`}
-                title={activeObjId === 'COM' ? t.comShort : (isTracking ? t.stopTracking : t.startTracking)}
-            > 
-                <Target size={20} /> 
-            </button>
+            <TrackingModeMenu key={activeObjId} tracking={autotracking} />
 
             <button 
                 onClick={() => { 

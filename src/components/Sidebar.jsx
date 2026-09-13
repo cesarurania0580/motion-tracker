@@ -1,12 +1,30 @@
-import React from 'react';
+import AutotrackingPanel from './AutotrackingPanel';
+import React, {useState} from 'react';
 import { useStore } from '../store/useStore';
 import { TRANSLATIONS } from '../utils/translations';
 import { 
   Trash2, RotateCcw, Clock, CircleDashed, Ruler, Table, 
-  Activity, Download 
+  Activity, Download, SlidersHorizontal, ChevronDown
 } from 'lucide-react';
 
+function ToolSection({title, icon, activeCount, t, styles, children}) {
+  const [open, setOpen] = useState(activeCount > 0);
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)}
+    className={`border-t pt-3 ${styles.panelBorder}`}>
+    <summary className={`flex items-center gap-2 cursor-pointer list-none text-xs font-bold ${styles.text}`}>
+      {icon}
+      <span className="uppercase tracking-wider">{title}</span>
+      {activeCount > 0 && <span className="ml-auto rounded bg-blue-500/15 px-1.5 py-0.5 font-normal whitespace-nowrap">
+        {activeCount} {activeCount === 1 ? t.activeTool : t.activeTools}
+      </span>}
+      <ChevronDown size={14} aria-hidden="true" className={`shrink-0 ${activeCount ? '' : 'ml-auto'} ${open ? 'rotate-180' : ''}`} />
+    </summary>
+    <div className="flex flex-col gap-2 mt-3">{children}</div>
+  </details>;
+}
+
 export default function Sidebar({
+  autotracking,
   positionData,
   uncertaintyMeters,
   resetScale,
@@ -17,6 +35,7 @@ export default function Sidebar({
   const language = useStore((state) => state.language);
   const activeObjId = useStore((state) => state.activeObjId);
   const fps = useStore((state) => state.fps);
+  const origin = useStore((state) => state.origin);
   const objects = useStore((state) => state.objects);
   const pixelsPerMeter = useStore((state) => state.pixelsPerMeter);
   const zeroTime = useStore((state) => state.zeroTime);
@@ -113,7 +132,7 @@ export default function Sidebar({
     <div className={`w-96 border-l flex flex-col transition-all z-20 shrink-0 ${styles.panel}`}>
       <div className={`p-4 border-b flex justify-between items-center ${styles.panelHeader} ${styles.panelBorder}`}> 
         <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}>
-          <Table size={16} /> {t.dataTable} ({activeObjId === 'COM' ? t.comShort : activeObjId})
+          <SlidersHorizontal size={16} /> {t.analysisSettings} ({activeObjId === 'COM' ? t.comShort : activeObjId})
         </h2> 
       </div>
       
@@ -147,6 +166,16 @@ export default function Sidebar({
           </div>
         )}
 
+        <div className={`border-t pt-3 ${styles.panelBorder}`}>
+          <div className={`flex items-center justify-between text-xs mb-1 ${styles.textSecondary}`}>
+            <span className="flex items-center gap-1"><CircleDashed size={12}/> {t.blurSize}</span>
+            <span>{uncertaintyPx}px</span>
+          </div>
+          <input type="range" min="0" max="50" value={uncertaintyPx} onChange={(e) => setUncertaintyPx(Number(e.target.value))} className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+        </div>
+
+        {autotracking.enabled && <AutotrackingPanel tracking={autotracking} />}
+
         <div className="flex flex-col gap-1 border-t pt-3 border-slate-700/20"> 
           <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}> 
             <span>{t.originLabel}: {origin ? `(${Math.round(origin.x)}, ${Math.round(origin.y)})` : t.notSet}</span> 
@@ -165,21 +194,10 @@ export default function Sidebar({
           </button>
         </div> 
 
-        <div className={`border-t pt-3 ${styles.panelBorder}`}>
-          <div className={`flex items-center justify-between text-xs mb-1 ${styles.textSecondary}`}> 
-            <span className="flex items-center gap-1"><CircleDashed size={12}/> {t.blurSize}</span> 
-            <span>{uncertaintyPx}px</span> 
-          </div>
-          <input type="range" min="0" max="50" value={uncertaintyPx} onChange={(e) => setUncertaintyPx(Number(e.target.value))} className="w-full h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
-        </div>
-
         {/* ADVANCED OVERLAY TOOLS */}
-        <div className={`border-t pt-3 ${styles.panelBorder} flex flex-col gap-2`}>
-          <div className="flex items-center gap-2 mb-1">
-             <Ruler size={14} className="text-blue-500" />
-             <span className={`text-xs font-bold uppercase tracking-wider ${styles.text}`}>{t.overlayTools}</span>
-          </div>
-          
+        <ToolSection title={t.overlayTools} icon={<Ruler size={14} className="text-blue-500 shrink-0" />}
+          activeCount={[tapeMeasure, protractor, showVelocityVectors, showAccelerationVectors].filter(Boolean).length}
+          t={t} styles={styles}>
           {/* Row 1: Tape Measure & Protractor Checkboxes */}
           <div className="grid grid-cols-2 gap-2">
             <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${styles.textSecondary} hover:${styles.text}`}>
@@ -242,15 +260,11 @@ export default function Sidebar({
               />
             </div>
           )}
-        </div>
+        </ToolSection>
 
         {/* SPECTROSCOPY & LINE PROFILE TOOLS */}
-        <div className={`border-t pt-3 ${styles.panelBorder} flex flex-col gap-2`}>
-          <div className="flex items-center gap-2 mb-1">
-             <Activity size={14} className="text-lime-500" />
-             <span className={`text-xs font-bold uppercase tracking-wider ${styles.text}`}>{t.spectroscopyPanel}</span>
-          </div>
-
+        <ToolSection title={t.spectroscopyPanel} icon={<Activity size={14} className="text-lime-500 shrink-0" />}
+          activeCount={lineProfile ? 1 : 0} t={t} styles={styles}>
           <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${styles.textSecondary} hover:${styles.text}`}>
             <input 
               type="checkbox" 
@@ -464,15 +478,24 @@ export default function Sidebar({
               </div>
             </div>
           )}
-        </div>
-        {points.length > 0 && activeObjId !== 'COM' && ( 
-          <button onClick={() => setPoints([])} className="text-red-400 hover:text-red-300 flex items-center justify-center gap-2 text-sm mt-2"> 
-            <Trash2 size={16} /> {t.clearData} 
-          </button> 
-        )} 
+        </ToolSection>
       </div>
       
       {/* COORDS DATA TABLE */}
+      <div className={`px-4 py-3 border-b shrink-0 flex flex-wrap justify-between items-center gap-2 ${styles.panelHeader} ${styles.panelBorder}`}>
+        <h2 className={`text-sm font-semibold flex items-center gap-2 ${styles.text}`}>
+          <Table size={16} /> {t.dataTable} ({activeObjId === 'COM' ? t.comShort : activeObjId})
+        </h2>
+        {activeObjId !== 'COM' && (
+          <button type="button" disabled={points.length === 0} onClick={() => {
+            // Abort before clearing so a pending seek cannot repopulate the table.
+            if (autotracking?.enabled) autotracking.reselect();
+            setPoints([]);
+          }} className={`flex items-center gap-1 text-xs rounded px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed ${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-700 hover:text-red-800'}`}>
+            <Trash2 size={14} aria-hidden="true" /> {t.clearObjectData.replace('{object}', activeObjId)}
+          </button>
+        )}
+      </div>
       <div className={`flex-1 overflow-y-auto ${styles.bg}`}> 
           <div className="flex flex-col h-full">
             <div className="flex-1 overflow-auto">

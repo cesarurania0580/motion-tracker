@@ -1,5 +1,9 @@
 export const TRANSLATIONS = {
   en: {
+    auto: {"title": "Automatic tracking", "local": "Local experiment", "step": "Track one frame", "run": "Run tracking", "pause": "Pause", "select": "Click the object in the video to select it.", "ready": "Target ready", "running": "Tracking…", "lost": "Object lost. Click the object to select it again.", "ended": "End of video", "invalid": "Select a textured target away from the image edge.", "error": "Could not read the video. Wait for a frame and select again.", "off": "Off", "settings": "Tracking settings and target preview", "size": "Template diameter (video px)", "radius": "Search radius (video px)", "evolution": "Template evolution (%)", "threshold": "Minimum structure match (%)", "predict": "Predict motion", "preview": "Selected tracking template", "help": "Select the correct video FPS. The circular template uses original video pixels, independent of zoom. Choose a distinctive feature with contrasting edges. Pause to adjust settings; changing diameter captures a new template. Tether limits adaptation toward the original appearance. Match percentages describe structural similarity, not probability. Navigating requires selecting the object again.", "chooseMode": "Tracking mode", "manual": "Manual tracking", "automatic": "Automatic tracking", "stop": "Stop tracking", "requiresVideo": "Load a video to use automatic tracking.", "reselect": "Reselect object", "restoreDefaults": "Restore defaults", "pausing": "Finishing current frame…", "tether": "Original-template tether (%)", "matchQuality": "Structure match", "failure_weak": "No sufficiently similar feature was found. The last accepted measurements were kept.", "failure_ambiguous": "Several locations look alike. Select a more distinctive feature or reduce the search area.", "failure_outside": "The search region no longer contains a complete template."},
+    analysisSettings: "Analysis Settings",
+    activeTool: "active",
+    activeTools: "active",
     appTitle: "PhysTracker",
     trackerMode: "Tracker",
     analysisMode: "Analysis",
@@ -35,7 +39,10 @@ export const TRANSLATIONS = {
     timeStart: "t=0 at Start",
     videoTime: "Video Time",
     blurSize: "Blur Size / Uncertainty",
+    fitUnavailable: "A sinusoidal fit needs at least six distinct X values and varying data. Select a longer interval containing an oscillation.",
+    fitUncertain: "The period may be unreliable: the selection covers less than one cycle, reaches a frequency search limit, or allows competing fits. Try a longer, well-sampled interval.",
     clearData: "Clear Data",
+    clearObjectData: "Clear {object} data",
     downloadCSV: "Download CSV",
     noData: "No data points yet for Object",
     noDataCOM: "Track both A and B to see Center of Mass.",
@@ -143,6 +150,10 @@ export const TRANSLATIONS = {
     showGuidelines: "Show Guidelines"
   },
   es: {
+    auto: {"title": "Seguimiento automático", "local": "Prueba local", "step": "Seguir un fotograma", "run": "Iniciar seguimiento", "pause": "Pausar", "select": "Haz clic en el objeto del video para seleccionarlo.", "ready": "Objeto listo", "running": "Siguiendo…", "lost": "Objeto perdido. Haz clic en el objeto para seleccionarlo de nuevo.", "ended": "Fin del video", "invalid": "Selecciona un objeto con textura lejos del borde de la imagen.", "error": "No se pudo leer el video. Espera un fotograma y selecciona de nuevo.", "off": "Desactivado", "settings": "Ajustes y vista previa del objeto", "size": "Diámetro de plantilla (px del video)", "radius": "Radio de búsqueda (px del video)", "evolution": "Evolución de plantilla (%)", "threshold": "Coincidencia estructural mínima (%)", "predict": "Predecir movimiento", "preview": "Plantilla del objeto seleccionado", "help": "Selecciona los FPS correctos. La plantilla circular usa píxeles originales del video, independientemente del zoom. Elige una característica distintiva con bordes contrastantes. Pausa para ajustar; cambiar el diámetro captura una nueva plantilla. El vínculo limita la adaptación hacia la apariencia original. Los porcentajes indican similitud estructural, no probabilidad. Navegar requiere seleccionar de nuevo.", "chooseMode": "Modo de seguimiento", "manual": "Seguimiento manual", "automatic": "Seguimiento automático", "stop": "Detener seguimiento", "requiresVideo": "Carga un video para usar el seguimiento automático.", "reselect": "Volver a seleccionar objeto", "restoreDefaults": "Restaurar valores predeterminados", "pausing": "Terminando el fotograma actual…", "tether": "Vínculo con plantilla original (%)", "matchQuality": "Coincidencia estructural", "failure_weak": "No se encontró una característica suficientemente similar. Se conservaron las mediciones aceptadas.", "failure_ambiguous": "Varias posiciones se parecen. Selecciona una característica más distintiva o reduce el área de búsqueda.", "failure_outside": "El área de búsqueda ya no contiene una plantilla completa."},
+    analysisSettings: "Ajustes de análisis",
+    activeTool: "activo",
+    activeTools: "activos",
     appTitle: "PhysTracker",
     trackerMode: "Rastreador",
     analysisMode: "Análisis",
@@ -178,7 +189,10 @@ export const TRANSLATIONS = {
     timeStart: "t=0 al Inicio",
     videoTime: "Tiempo del Video",
     blurSize: "Tamaño de Desenfoque / Incertidumbre",
+    fitUnavailable: "El ajuste sinusoidal requiere al menos seis valores X distintos y datos variables. Selecciona un intervalo mayor que incluya una oscilación.",
+    fitUncertain: "El período puede ser poco fiable: la selección cubre menos de un ciclo, alcanza un límite de frecuencia o admite ajustes alternativos. Prueba un intervalo mayor con suficientes muestras.",
     clearData: "Borrar Datos",
+    clearObjectData: "Borrar datos de {object}",
     downloadCSV: "Descargar CSV",
     noData: "Aún no hay datos para el Objeto",
     noDataCOM: "Rastrea A y B para ver el Centro de Masa.",

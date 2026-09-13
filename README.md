@@ -93,3 +93,11 @@ This is a modern React project powered by Vite. To run it on your machine:
 **PhysTracker** is open-source software licensed under the [MIT License](LICENSE).
 
 Copyright © 2026 Cesar Cortes
+
+## Development and release
+
+Start with [the specification index](specs/README.md), [project context](CONTEXT.md),
+[development and recovery instructions](docs/DEVELOPMENT.md), and
+[the automatic-tracking validation record](docs/testing/autotracking.md).
+Automatic tracking is available in development and production builds.
+See [release preparation](docs/RELEASE.md) for validation and deployment status.

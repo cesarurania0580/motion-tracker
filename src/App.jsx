@@ -1,4 +1,5 @@
 /* eslint-disable */
+/* eslint-enable no-undef */
 /**
  * PhysTracker
  * Version: 1.1.0
@@ -13,7 +14,8 @@ import { Activity, X, Github, Mail, Coffee } from 'lucide-react';
 
 // --- UTILS & CORE DICTIONARIES ---
 import { TRANSLATIONS } from './utils/translations';
-import { calculateNiceScale, solveLinearSystem } from './utils/physicsMath';
+import {fitCurve} from './utils/curveFit';
+import { calculateNiceScale } from './utils/physicsMath';
 import { useStore } from './store/useStore';
 
 // --- SUB-COMPONENTS ---
@@ -21,8 +23,12 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import AnalysisPanel from './components/AnalysisPanel';
 import VideoCanvas from './components/VideoCanvas';
+import {useAutotracking} from './hooks/useAutotracking';
+
 
 export default function App() {
+  const videoRef = useRef(null);
+  const autotracking = useAutotracking(videoRef);
   // --- ZUSTAND STATE MANAGEMENT ---
   const language = useStore(state => state.language);
   const setLanguage = useStore(state => state.setLanguage);
@@ -89,6 +95,7 @@ export default function App() {
 
   const isCalibrating = useStore(state => state.isCalibrating);
   const setIsCalibrating = useStore(state => state.setIsCalibrating);
+  const setIsSettingOrigin = useStore(state => state.setIsSettingOrigin);
   const calibrationPoints = useStore(state => state.calibrationPoints);
   const setCalibrationPoints = useStore(state => state.setCalibrationPoints);
   const pixelsPerMeter = useStore(state => state.pixelsPerMeter);
@@ -295,7 +302,10 @@ export default function App() {
 
   const clearProject = () => {
     if (confirm("Are you sure? This will delete all data and reset the app.")) {
-      localStorage.removeItem('physTracker_autosave');
+      if (typeof window !== 'undefined') {
+        window.isResetting = true;
+      }
+      useStore.getState().resetProject();
       window.location.reload();
     }
   };
@@ -380,10 +390,10 @@ export default function App() {
         const { x: rx, y: ry } = getRotatedCoords(p.x, p.y);
         const adjustedTime = zeroTime ? (p.time - startTime) : p.time;
         return {
-          time: parseFloat(adjustedTime.toFixed(3)),
-          x: parseFloat(formatVal(rx).toFixed(3)),
-          y: parseFloat(formatVal(ry).toFixed(3)),
-          error: parseFloat(uncertaintyMeters.toFixed(3))
+          time: adjustedTime,
+          x: formatVal(rx),
+          y: formatVal(ry),
+          error: uncertaintyMeters
         };
     });
 
@@ -453,9 +463,9 @@ export default function App() {
 
         if (vx !== null && vy !== null) {
             velData.push({
-                time: parseFloat(adjustedTime.toFixed(3)),
-                vx: parseFloat(vx.toFixed(3)),
-                vy: parseFloat(vy.toFixed(3)),
+                time: adjustedTime,
+                vx: vx,
+                vy: vy,
                 x: null, 
                 y: null,
                 error: null 
@@ -484,113 +494,7 @@ export default function App() {
 
   // Curve fitting calculations
   const fitEquation = useMemo(() => {
-    if (fitModel === 'none' || activeData.length < 2) return null;
-
-    const validData = activeData.filter(d => d[plotX] !== null && d[plotY] !== null && isFinite(d[plotX]) && isFinite(d[plotY]));
-    if (validData.length < 2) return null;
-
-    const n = validData.length;
-    const sum = (arr) => arr.reduce((acc, val) => acc + val, 0);
-
-    const xData = validData.map(d => d[plotX]);
-    const yData = validData.map(d => d[plotY]);
-
-    let result = null;
-
-    if (fitModel === 'linear') {
-      const sumX = sum(xData);
-      const sumY = sum(yData);
-      const sumXY = sum(validData.map(d => d[plotX] * d[plotY]));
-      const sumX2 = sum(xData.map(x => x * x));
-
-      const num = n * sumXY - sumX * sumY;
-      const den = n * sumX2 - sumX * sumX;
-
-      if (Math.abs(den) > 1e-12) {
-          const m = num / den;
-          const b = (sumY - m * sumX) / n;
-          result = {
-              type: 'Linear',
-              text: `y = ${m.toFixed(4)}x ${b >= 0 ? '+' : '-'} ${Math.abs(b).toFixed(4)}`,
-              fn: (x) => m * x + b,
-              params: { m: m, b: b }
-          };
-      }
-    } 
-    else if (fitModel === 'quadratic' && validData.length >= 3) {
-      const sumX = sum(xData);
-      const sumY = sum(yData);
-      const sumX2 = sum(xData.map(x => x * x));
-      const sumX3 = sum(xData.map(x => Math.pow(x, 3)));
-      const sumX4 = sum(xData.map(x => Math.pow(x, 4)));
-      const sumXY = sum(validData.map(d => d[plotX] * d[plotY]));
-      const sumX2Y = sum(validData.map(d => Math.pow(d[plotX], 2) * d[plotY]));
-
-      const A_mat = [
-          [sumX4, sumX3, sumX2],
-          [sumX3, sumX2, sumX],
-          [sumX2, sumX, n]
-      ];
-      const B_vec = [sumX2Y, sumXY, sumY];
-
-      const coeffs = solveLinearSystem(A_mat, B_vec);
-      if (coeffs) {
-          const [a, b, c] = coeffs;
-          result = {
-              type: 'Quadratic',
-              text: `y = ${a.toFixed(4)}x² ${b >= 0 ? '+' : '-'} ${Math.abs(b).toFixed(4)}x ${c >= 0 ? '+' : '-'} ${Math.abs(c).toFixed(4)}`,
-              fn: (x) => a * x * x + b * x + c,
-              params: { A: a, B: b, C: c }
-          };
-      }
-    } 
-    else if (fitModel === 'sinusoidal' && validData.length >= 4) {
-      const yMin = Math.min(...yData);
-      const yMax = Math.max(...yData);
-      const A = (yMax - yMin) / 2;
-      const D = (yMax + yMin) / 2;
-
-      let bestB = 1.0;
-      let bestC = 0.0;
-      let minResidual = Infinity;
-
-      const candidatesB = [0.5, 1.0, 2.0, 5.0, 10.0];
-      const candidatesC = [0, Math.PI / 4, Math.PI / 2, Math.PI, -Math.PI / 2];
-
-      for (const b of candidatesB) {
-          for (const c of candidatesC) {
-              const res = validData.reduce((acc, d) => {
-                  const pred = A * Math.sin(b * d[plotX] + c) + D;
-                  return acc + Math.pow(d[plotY] - pred, 2);
-              }, 0);
-              if (res < minResidual) {
-                  minResidual = res;
-                  bestB = b;
-                  bestC = c;
-              }
-          }
-      }
-
-      result = {
-          type: 'Sinusoidal',
-          text: `y = ${A.toFixed(4)}sin(${bestB.toFixed(4)}x ${bestC >= 0 ? '+' : '-'} ${Math.abs(bestC).toFixed(4)}) ${D >= 0 ? '+' : '-'} ${Math.abs(D).toFixed(4)}`,
-          fn: (x) => A * Math.sin(bestB * x + bestC) + D,
-          params: { A: A, B: bestB, C: bestC, D: D }
-      };
-    }
-
-    if (result) {
-        const yMean = sum(yData) / n;
-        const ssTot = yData.reduce((acc, y) => acc + Math.pow(y - yMean, 2), 0);
-        const ssRes = validData.reduce((acc, d) => {
-            const pred = result.fn(d[plotX]);
-            return acc + Math.pow(d[plotY] - pred, 2);
-        }, 0);
-        const r2 = ssTot === 0 ? 1 : (1 - (ssRes / ssTot));
-        result.r2 = r2;
-    }
-
-    return result;
+    return fitCurve(activeData, fitModel, plotX, plotY);
   }, [fitModel, activeData, plotX, plotY]);
 
   const xScale = useMemo(() => {
@@ -622,7 +526,8 @@ export default function App() {
     const range = maxX - minX;
     if (range <= 0) return base;
 
-    const resolution = 150;
+    const cycles = fitEquation.type === 'Sinusoidal' ? fitEquation.params.B * range / (2 * Math.PI) : 0;
+    const resolution = Math.min(8192, Math.max(150, Math.ceil(cycles * 32)));
     const step = range / resolution;
     const virtualPoints = [];
 
@@ -655,7 +560,8 @@ export default function App() {
   return (
     <div className={`flex flex-col h-screen font-sans transition-colors duration-200 ${styles.bg} ${styles.text}`}>
       {/* HEADER WITH VIEW SWITCHER */}
-      <Header 
+      <Header
+        autotracking={autotracking}
         handleObjectSwitch={handleObjectSwitch}
         handleScaleButtonClick={handleScaleButtonClick}
         handleFileUpload={handleFileUpload}
@@ -667,8 +573,9 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* VIEW 1: TRACKER MODE */}
         <div className={`flex-1 flex overflow-hidden ${viewMode === 'tracker' ? '' : 'hidden'}`}>
-            <VideoCanvas points={points} />
-            <Sidebar 
+            <VideoCanvas points={points} videoRef={videoRef} autotracking={autotracking} />
+            <Sidebar
+              autotracking={autotracking}
               positionData={positionData}
               uncertaintyMeters={uncertaintyMeters}
               resetScale={resetScale}

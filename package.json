@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test --test-isolation=none tests/*.test.js",
+    "benchmark:rocket": "node scripts/replay-rocket.mjs ../prototypes/test-videos/spaceX.mp4 /tmp/rocket-replay.json \"{}\" \"{}\" --verify"
   },
   "dependencies": {
     "lucide-react": "^0.555.0",

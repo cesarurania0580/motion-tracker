@@ -52,14 +52,36 @@ The app solves this $3 \times 3$ system using a **Gaussian Elimination solver** 
 * **Physics Interpretation**: In a position vs. time plot under constant acceleration ($x(t) = \frac{1}{2}a t^2 + v_0 t + x_0$), the coefficient $A$ represents **half the acceleration** ($\frac{1}{2}a$). The app displays the actual acceleration value ($2A$) automatically.
 
 ### 3. Sinusoidal Fit ($y = A \sin(Bx + C) + D$)
-1. **Vertical Offset ($D$)**: Evaluated as the average value: $D = \frac{1}{n} \sum y_i$.
-2. **Amplitude ($A$)**: Calculated as half the range: $A = \frac{\max(y) - \min(y)}{2}$.
-3. **Frequency Estimate ($B_{\text{est}}$)**: Shifts the data to center at zero ($y_{\text{shifted}} = y - D$) and identifies adjacent sign changes (**zero-crossings**) to compute the period $T$:
-   $$T = 2 \cdot \frac{\sum \Delta t_{\text{crossings}}}{\text{crossings count} - 1} \implies B_{\text{est}} = \frac{2\pi}{T}$$
-4. **Grid Search Optimization**: Performs a local sweep of frequency $B \in [0.8 B_{\text{est}}, 1.2 B_{\text{est}}]$ (in steps of 5%) and phase $C \in [-\pi, \pi]$ (in steps of 0.1 rad) to find the parameters $(B, C)$ that minimize the Sum of Squared Residuals (SSR).
+The former implementation tried only five frequencies and five phases, with
+amplitude/offset fixed from extrema. That implementation did not match the older
+zero-crossing description and could not provide a general least-squares fit.
+
+Approved replacement (CF-01): for each trial frequency solve the linear least-
+squares model `p sin(w u) + q cos(w u) + d`, with normalized independent variable
+`u=(x-minX)/span`. Search 0.1 cycles per selected span up to the smaller of 128
+cycles, half the unique sample count minus one, and the median-spacing sampling
+limit. This is a bounded search, not a guarantee against every sampling alias.
+Sweep with at least 16 samples per cycle of trial frequency, refine the eight
+best local minima, then select the smallest sum of squared residuals. Convert
+coefficients to nonnegative amplitude, positive angular frequency, phase and offset.
+
+CF-02: retain full precision through derived position/velocity data and fitting;
+round table/parameter labels only. Fit the same selected axes and cropped points
+that are plotted. Keep original project measurement schema.
+
+CF-03: require six distinct finite independent-variable values and varying data
+for a sinusoidal fit. Show an EN/ES unavailable message otherwise. Warn when the
+fit covers less than one cycle, reaches a search boundary, or competing searched
+frequencies have nearly equal residuals. A short interval may admit a high R²
+without reliable physical parameters.
+
+CF-04: regression tests cover a frequency absent from the former guesses, arbitrary
+phase, noisy/irregular samples, cropped intervals, shifted/scaled coordinates,
+degenerate inputs, and existing linear/quadratic fits. Owner browser checks remain
+separate from automated evidence.
 
 ### 4. Coefficient of Determination ($R^2$)
-Measures the goodness-of-fit, bounded between $0.0$ (no correlation) and $1.0$ (perfect correlation):
+Measures goodness-of-fit, with 1 indicating a perfect fit; values can be negative when the model is worse than the mean. Constant data has undefined R²:
 $$R^2 = 1 - \frac{SS_{\text{res}}}{SS_{\text{tot}}}$$
 where:
 $$SS_{\text{res}} = \sum_{i=1}^n \left( y_i - f(x_i) \right)^2 \quad \text{(Sum of Squared Residuals)}$$
@@ -71,9 +93,9 @@ $$SS_{\text{tot}} = \sum_{i=1}^n \left( y_i - y_{\text{mean}} \right)^2 \quad \t
 
 To draw the actual continuous mathematical function instead of a wobbly cubic spline connecting noisy points, the engine decouples rendering from experimental coordinates:
 
-1. **Virtual coordinate grid**: Inside a `useMemo` block, the app checks if a curve fit is active and generates **150 virtual coordinate points** evenly distributed across the visible horizontal width of the chart:
-   $$x_{\text{step}} = \frac{x_{\text{max}} - x_{\text{min}}}{150}$$
-   $$x_{\text{virtual}, k} = x_{\text{min}} + k \cdot x_{\text{step}}, \quad \text{for } k \in \{0, 1, \dots, 150\}$$
+1. **Virtual coordinate grid**: Inside a `useMemo` block, the app checks if a curve fit is active and generates a grid of **at least 150 intervals** (32 intervals per fitted sinusoidal cycle, capped at 8192) evenly distributed across the visible horizontal width of the chart:
+   $$x_{\text{step}} = \frac{x_{\text{max}} - x_{\text{min}}}{N}$$
+   $$x_{\text{virtual}, k} = x_{\text{min}} + k \cdot x_{\text{step}}, \quad \text{for } k \in \{0, 1, \dots, N\}$$
 2. **Exact evaluation**: Solves $y_{\text{fit}, k} = f(x_{\text{virtual}, k})$ using the solved mathematical function, storing it under the key `fitYContinuous`.
 3. **Dataset merging**: Concatenates these virtual coordinates with the experimental data. 
 4. **Isolated rendering layers**:
