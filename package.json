@@ -7,13 +7,16 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test --test-isolation=none tests/*.test.js",
+    "benchmark:rocket": "node scripts/replay-rocket.mjs ../prototypes/test-videos/spaceX.mp4 /tmp/rocket-replay.json \"{}\" \"{}\" --verify"
   },
   "dependencies": {
     "lucide-react": "^0.555.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "recharts": "^3.5.1"
+    "recharts": "^3.5.1",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
