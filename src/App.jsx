@@ -2,7 +2,7 @@
 /* eslint-enable no-undef */
 /**
  * PhysTracker
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Cesar Cortes
  * Powered by: Gemini Pro AI
  * License: MIT
@@ -208,7 +208,7 @@ export default function App() {
 
   const saveProject = () => {
     const stateToSave = {
-        meta: { version: "1.1.0", date: new Date().toISOString() },
+        meta: { version: "1.2.0", date: new Date().toISOString() },
         objects,
         activeObjId,
         calibrationPoints,
@@ -616,7 +616,7 @@ export default function App() {
                 <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="grid grid-cols-[80px_1fr] gap-y-2 text-sm items-center">
                         <span className="opacity-60 font-semibold">{t.version}</span>
-                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.1.0</span>
+                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.2.0</span>
                         
                         <span className="opacity-60 font-semibold">{t.author}</span>
                         <span>Cesar Cortes</span>

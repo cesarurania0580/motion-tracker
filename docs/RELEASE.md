@@ -1,9 +1,8 @@
-# Autotracking release candidate
+# PhysTracker 1.2.0 release record
 
 ## Owner acceptance
 The owner reports good browser tracking on free fall, simple harmonic motion,
-collisions and other videos. Recorded acceptance applies to the local development
-app. Production preview has not yet been accepted.
+collisions and other videos. The owner also approved the production preview before publication.
 
 ## Included scope
 - Earlier 13-commit component/store refactor and specification baseline.
@@ -43,10 +42,11 @@ Existing complete workspace backup:
 Rollback should republish the previous verified Netlify deploy if necessary;
 never reset or overwrite the local working tree to perform a deployment rollback.
 
-## Remaining release steps
-1. Authentication, remote refs and published Netlify baseline verified.
-2. Commit the reviewed release candidate on the feature branch.
-3. Push that branch and inspect its PR/deploy preview using the production build.
-4. Owner checks the preview; merge/publish the approved release and verify status.
+## Published release
 
-No live deployment has been performed by the release-preparation work.
+Pull request [#4](https://github.com/cesarurania0580/motion-tracker/pull/4) merged to
+`main` as `c8592387c95320034140e5ad235cab6fc9f49faf` on 2026-09-13.
+Production HTML, JavaScript and CSS returned HTTP 200; the live JS and CSS
+matched the owner-approved Netlify preview byte-for-byte. The prior deploy
+`6a1904c00d3b7b000800c5ab` remains the recorded rollback reference.
+The subsequent 1.2.0 documentation/version update does not change tracking logic.
