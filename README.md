@@ -1,103 +1,45 @@
-# PhysTracker (v1.1.0)
+# PhysTracker 1.2.0
 
-**PhysTracker** is a professional-grade, open-source video and image analysis tool designed for physics education and laboratory research. Built with modern web technologies and a single-file monolithic React architecture, it allows students, educators, and researchers to analyze motion, kinematics, and spectral distributions directly in the browser with high-frequency responsiveness and zero software installation.
+[Use PhysTracker](https://phystracker.org/) · [Changelog](CHANGELOG.md) · [License](LICENSE)
 
----
+PhysTracker is an open-source video and image analysis tool for physics teaching. Mark an object's position frame by frame, or use automatic tracking to follow a distinctive feature. Calibrate distance, inspect motion graphs, fit curves, and export measurements—all in your browser.
 
-## 🚀 Key Features
+## What you can do
 
-### 1. Spectroscopy & Line Profile Analysis Tool (New in v1.1.0)
-* **Offscreen Pixel Averaging**: Sample intensity along an arbitrary line profile with adjustable **Spread Width** (perpendicular pixel averaging) to suppress high-frequency camera noise.
-* **Color Channel Splitting**: Analyze Luma (overall intensity) alongside individual Red, Green, and Blue profiles.
-* **Arbitrary 2-Point Laser Snap Calibration**: Decouples sampling line boundaries from calibration marks. Click to snap to scale markings or laser dots that extend *outside* the line segment for precise mathematical extrapolation.
-* **Vertical Projection Guidelines**: Vibrant, semi-transparent vertical alignment lines (Cyan for Ref 1, Red for Ref 2) that stretch across the canvas for perfect alignment with physical ticks or laser points.
-* **Emission Line Reference Guides**: Toggle theoretical reference markers (Hydrogen Balmer Series, Helium, and Mercury Vapor) directly on the spectral chart to verify experimental peak alignment.
+- **Track motion:** Choose Object A or B, then select Manual or Automatic from the tracking button. Automatic tracking uses a small patch of the original video, lets you adjust its size and search area, and pauses when a match is weak or ambiguous. Inspect automatically marked points before using them in an analysis.
+- **Measure and analyze:** Set scale and coordinate origin; inspect position, velocity, acceleration, and center of mass. Fit linear, quadratic, or sinusoidal curves to selected graph data.
+- **Use visual tools:** Show a tape measure, protractor, motion vectors, or a spectroscopy line profile with wavelength calibration and emission-line guides.
+- **Keep your work:** Export measurements as CSV and graphs as PNG. The app also saves work locally and can export and reopen JSON project files. The media file is not embedded in a project file; reopen the corresponding video or image after loading a project.
 
-### 2. Native Static Image Analysis (New in v1.1.0)
-* Directly upload `.png`, `.jpg`, and `.jpeg` images of spectra or experimental kinematics setups.
-* Automatically fits the viewport, extracts image dimensions, and disables temporal playback widgets to deliver a clean image-only editing experience.
+### Automatic tracking
 
-### 3. Center of Mass (COM) Tracking (New in v1.0.3)
-* Track multiple objects simultaneously (Object A & Object B).
-* Automatically computes the system's overall Center of Mass (COM) coordinates, velocity, and trajectories in real-time.
+1. Upload a video and select **Object A** or **Object B**.
+2. Set the video's frame rate, open the tracking button, and choose **Automatic tracking**.
+3. Click a distinctive feature in the video. For a narrow object, choose an area with contrasting edges rather than a large patch of background.
+4. Adjust the template diameter and search radius if needed, then choose **Track one frame** or **Run tracking**. Pause to change settings without discarding recorded points.
+5. Check the plotted points. If tracking stops or selects the wrong location, use **Reselect object** or **Clear A/B data** as appropriate.
 
-### 4. Advanced Scientific Overlays
-* **Protractor**: Measure angular positions, deflection, and rotation.
-* **Tape Measure**: Measure absolute pixel distances and real-world calibrated meters.
-* **Dynamic Kinematic Vectors**: Render velocity and acceleration vectors directly on tracked points that scale and orient dynamically based on motion derivatives.
+Automatic tracking is available for videos. Manual tracking remains available for videos and still images. Tracking accuracy depends on the video, target, and settings.
 
-### 5. Core Kinematics Engine
-* **Frame-Accurate Video Control**: Frame step-forward/backward controls synchronized perfectly with data points.
-* **Coordinate System Customization**: Place and rotate the origin axis $(0,0)$ to align with motion planes (e.g. inclined tracks).
-* **Real-Time Data Curve Fitting**: Instantly apply linear and quadratic regression fits to positions, velocities, and accelerations on interactive charts.
-* **Comprehensive Export Tools**: Download raw tracking data as CSV, and download publication-quality charts as PNG images.
-* **Auto-Save & Project Files**: Your work is automatically saved in local storage, and projects can be saved/loaded as `.json` project files.
+## Run locally
 
----
+Requirements: Node.js 20.19+ or 22.12+, and npm.
 
-## 🚀 Quick Start Guide
+```bash
+git clone https://github.com/cesarurania0580/motion-tracker.git
+cd motion-tracker
+npm ci
+npm run dev
+```
 
-### Kinematics Tracking
-1. **Upload Media**: Click **Upload Video/Image** to open a video file or static photo.
-2. **Set Scale**: Click **Set Scale** and drag the green markers across a known distance (e.g. a meter stick), then input its physical length in meters.
-3. **Align Origin (Optional)**: Click **Set Origin** to place the reference axes. Rotate the blue handle to align the x-axis with an inclined plane.
-4. **Track Points**: Select **Object A** or **Object B**, then click on the object in the media. The app will automatically mark the point and step to the next frame.
-5. **Analyze**: Switch to the **Analysis** panel to view tracking plots, and apply Curve Fitting to extract velocities (slope) or acceleration (quadratic factor).
+Open the localhost URL printed by Vite. For a production build, run `npm run build`; the output is in `dist`. Run `npm test` and `npm run lint` to check the code.
 
-### Spectroscopy Analysis
-1. **Upload Spectrum**: Upload a static photo or video frame of a spectrum.
-2. **Enable Line Profile**: Check the **Line Profile** checkbox in the sidebar.
-3. **Draw & Align Profile**: Drag the P1 and P2 endpoints horizontally across the spectrum band.
-4. **Calibrate Wavelengths**: 
-   * Expand the **Wavelength Calibration** sidebar card.
-   * Click **🎯 Snap to click** next to Reference 1 and click on your blue laser dot or 400 nm scale tick. Input `400`.
-   * Click **🎯 Snap to click** next to Reference 2 and click on your red laser dot or 700 nm scale tick. Input `700`.
-   * Toggle **Show Guidelines** to verify vertical guideline projection alignment.
-5. **Plot Spectrum**: Go to **Analysis** tab $\to$ **Spectral Profile**, and select **Wavelength (nm)** as the X-axis unit. Check the **Hydrogen (H₂)** guide overlays to align your peaks with theoretical lines.
+## Project documentation
 
----
+- [Specifications and development workflow](specs/README.md)
+- [Project context](CONTEXT.md)
+- [Local development and recovery](docs/DEVELOPMENT.md)
+- [Autotracking benchmark and limitations](docs/testing/rocket-autotracking.md)
+- [Curve-fitting validation](docs/testing/curve-fitting.md)
 
-## 🛠️ Running Locally
-
-This is a modern React project powered by Vite. To run it on your machine:
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/cesarurania0580/motion-tracker.git
-   cd motion-tracker
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Start the development server**:
-   ```bash
-   npm run dev
-   ```
-   *To expose the server on your local network to test on tablet/mobile devices, run:*
-   ```bash
-   npm run dev -- --host
-   ```
-
-4. **Build production bundles**:
-   ```bash
-   npm run build
-   ```
-
----
-
-## 📄 License
-
-**PhysTracker** is open-source software licensed under the [MIT License](LICENSE).
-
-Copyright © 2026 Cesar Cortes
-
-## Development and release
-
-Start with [the specification index](specs/README.md), [project context](CONTEXT.md),
-[development and recovery instructions](docs/DEVELOPMENT.md), and
-[the automatic-tracking validation record](docs/testing/autotracking.md).
-Automatic tracking is available in development and production builds.
-See [release preparation](docs/RELEASE.md) for validation and deployment status.
+PhysTracker is licensed under the [MIT License](LICENSE). Copyright © 2026 Cesar Cortes.
