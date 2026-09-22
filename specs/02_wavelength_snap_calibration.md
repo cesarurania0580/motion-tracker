@@ -1,5 +1,11 @@
 # Technical Specification: 2-Point Laser Snap Calibration & Projection Guidelines
 
+> Current interaction (2026-09-19): calibration is spectroscopy step 1. Enter a
+> positive wavelength before Locate Reference; show the value and reference number
+> in an instruction over the image, plus active-button styling and crosshair. Markers
+> are draggable in calibration; Reposition remains available. Reference colors match
+> the sidebar. Numerical calibration rules are unchanged. Latest workflow review pending.
+
 ## 1. Overview & Purpose
 This module provides **Arbitrary 2-Point Laser/Scale Wavelength Calibration** and **Vertical Alignment Guidelines** for the spectroscopy analysis suite. It decouples the optical sampling boundaries (defined by line profile endpoints $P_1$ and $P_2$) from the physical reference calibration points ($R_1$ and $R_2$), permitting users to calibrate a setup using scale markings or laser dots that extend *outside* the active spectrum sampling line.
 
@@ -59,3 +65,35 @@ maintaining 100% backward compatibility with previous project files!
 ## 5. State Persistence & UI Drawing
 * `wavelengthCalibration`: `{ p1_wl: number, p2_wl: number, p1_t: number, p2_t: number }` (or `null` if uncalibrated).
 * `showGuidelines`: `boolean` (toggles dashed vertical rendering at $x = r_1\_x$ and $x = r_2\_x$ across the canvas height).
+
+## Repair and student workflow (supersedes relative-reference editing)
+
+Objective: upload spectrum image → enter two known wavelengths and mark their
+image positions → place a sampling line → inspect/export intensity by wavelength.
+New calibrations store p1_point/p2_point in native image pixels plus
+coordinateMode='image'. References stay fixed when the sampling line moves.
+Projection onto the reference-to-reference direction defines the linear wavelength
+axis. This assumes approximately linear dispersion, not absolute spectrometer
+response. Legacy p1_t/p2_t and endpoint-only projects remain readable; editing the
+line freezes legacy reference positions first. Missing, coincident, nonpositive or
+equal-wavelength references cannot produce a calibrated graph.
+
+SP-01: updater callbacks yield serializable objects (regression reproduced).
+SP-02: references can be placed before a sampling line; selection cancels other tools.
+SP-03: line placement/movement never moves image-anchored references.
+SP-04: blank/invalid calibration shows pixels and a corrective message, not default nm.
+SP-05: sampling uses native media pixels; clipped samples retain original distances.
+SP-06: View spectrum opens the spectral chart; CSV contains spectral rows, and PNG
+uses a spectrum title without motion-fit annotations. EN/ES instructions and touch
+controls are required. User browser acceptance remains pending.
+
+## Explicit reference-guide tilt
+SP-07: Image-reference guides default to canvas-vertical (0 degrees), independent
+of differing reference heights. A shared -90 to +90 degree slider and reset to
+vertical control rotate both parallel guides around their fixed reference points.
+Positive angles tilt the top toward the right. Wavelengths use projection onto
+the perpendicular dispersion axis, matching the guides; reject reference
+separation below one pixel on that axis. Store guideAngleDeg in calibration.
+Legacy relative references retain their previous projection until converted,
+including preserving their angle during conversion. Test default unequal heights,
+explicit tilt, degenerate projection, and serialization. Browser acceptance pending.

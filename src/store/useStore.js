@@ -1,3 +1,5 @@
+import {initialSamplingLine} from '../utils/spectrumWorkflow.js';
+import {anchorCalibration} from '../utils/spectroscopy.js';
 import { create } from 'zustand';
 
 // Attempt to restore saved state from localStorage
@@ -11,6 +13,17 @@ const getInitialState = () => {
     showAboutModal: false,
     logoError: false,
     hasRestoredData: false,
+    saveStatus: 'idle',
+    fpsConfirmed: false,
+    axesConfirmed: false,
+    spectrumInteractionVersion: 0,
+    spectrumStep: 'calibrate',
+    spectrumUsePixels: false,
+    autoFineOpen: false,
+    imageTask: null,
+    sidebarTab: 'controls',
+    sidebarViews: {controls:'root', tools:'root'},
+    pointEditHistory: {},
 
     // Kinematics State
     objects: [
@@ -69,6 +82,8 @@ const getInitialState = () => {
     spectralMode: 'pixels',
     analysisChartMode: 'kinematics',
     spectralData: [],
+    spectralError: false,
+    spectralLineStart: null,
     activeReferenceOverlays: { h2: false, he: false, hg: false },
     activeClickTarget: null,
     showGuidelines: true,
@@ -96,14 +111,14 @@ const getInitialState = () => {
 
       // Check if we restored any tracking data to set hasRestoredData
       const hasPoints = (data.objects && data.objects.some(o => o.points.length > 0)) || (data.points && data.points.length > 0);
-      if (hasPoints) {
+      if (hasPoints || data.origin || data.lineProfile || data.pixelsPerMeter || data.wavelengthCalibration) {
         restored.hasRestoredData = true;
       }
 
       // Restore other fields if present
       if (data.calibrationPoints) restored.calibrationPoints = data.calibrationPoints;
       if (data.pixelsPerMeter) restored.pixelsPerMeter = data.pixelsPerMeter;
-      if (data.origin) restored.origin = data.origin;
+      if (data.origin) {restored.origin = data.origin; restored.axesConfirmed = true;}
       if (data.originAngle) restored.originAngle = data.originAngle;
       if (data.zeroTime !== undefined) restored.zeroTime = data.zeroTime;
       if (data.fitModel) restored.fitModel = data.fitModel;
@@ -136,6 +151,34 @@ const getInitialState = () => {
 const useStore = create((set, get) => ({
   ...getInitialState(),
 
+  selectImageTask: (imageTask) => {
+    if(![null,'spectrum','measure'].includes(imageTask))return;
+    const state=get();
+    set({imageTask,viewMode:'tracker',isPlaying:false,isTracking:false,
+      isCalibrating:false,isSettingOrigin:false,activeClickTarget:null,spectralLineStart:null,
+      sidebarTab:'tools',sidebarViews:{...state.sidebarViews,tools:imageTask==='spectrum'?'spectroscopy':imageTask==='measure'?'overlays':'root'}});
+  },
+  setSpectrumStep: (spectrumStep) => {
+    if(!['sample','calibrate','explore'].includes(spectrumStep))return;
+    const state=get();
+    const line=spectrumStep==='sample' && !state.lineProfile && (state.imageObj || state.videoSrc)
+      ? initialSamplingLine(state.videoDims) : null;
+    set({spectrumStep,activeClickTarget:null,spectralLineStart:null,
+      ...(spectrumStep==='sample'?{spectrumInteractionVersion:state.spectrumInteractionVersion+1,isPlaying:false,isTracking:false,isCalibrating:false,isSettingOrigin:false,showInputModal:false}:{}),
+      ...(line?{lineProfile:line}:{}),
+    });
+  },
+  // Session-only navigation: excluded from autosave and project serialization.
+  navigateSidebar: (tab, view) => {
+    const state=get();
+    const allowed={controls:['root','automatic','measurement'],data:['root'],tools:['root','overlays','spectroscopy']};
+    if(!allowed[tab] || (view!==undefined && !allowed[tab].includes(view)))return;
+    const sidebarViews=view===undefined?state.sidebarViews:{...state.sidebarViews,[tab]:view};
+    const leavingSpectrum=tab!=='tools' || sidebarViews.tools!=='spectroscopy';
+    const cancelPlacement=leavingSpectrum && ['r1','r2','spectrum_p1','spectrum_p2'].includes(state.activeClickTarget);
+    set({sidebarTab:tab,sidebarViews,...(cancelPlacement?{activeClickTarget:null,spectralLineStart:null}:{})});
+  },
+
   // SETTERS & MUTATORS
   setLanguage: (languageInput) => {
     const nextLanguage = typeof languageInput === 'function'
@@ -154,7 +197,11 @@ const useStore = create((set, get) => ({
     const nextObjects = typeof objectsInput === 'function'
       ? objectsInput(get().objects)
       : objectsInput;
-    set({ objects: nextObjects });
+    const pointEditHistory={...get().pointEditHistory};
+    for(const obj of get().objects) {
+      if(nextObjects.find(next=>next.id===obj.id)?.points!==obj.points)delete pointEditHistory[obj.id];
+    }
+    set({ objects: nextObjects, pointEditHistory });
   },
   
   setActiveObjId: (activeObjId) => set({ activeObjId }),
@@ -180,7 +227,8 @@ const useStore = create((set, get) => ({
   setFitModel: (fitModel) => set({ fitModel }),
   setLegendPosition: (legendPosition) => set({ legendPosition }),
   setUncertaintyPx: (uncertaintyPx) => set({ uncertaintyPx }),
-  setFps: (fps) => set({ fps }),
+  setFps: (fps) => set({ fps, fpsConfirmed: false }),
+  setFpsConfirmed: (fpsConfirmed) => set({ fpsConfirmed }),
   
   setCropStart: (cropStart) => set({ cropStart }),
   setCropEnd: (cropEnd) => set({ cropEnd }),
@@ -206,8 +254,15 @@ const useStore = create((set, get) => ({
   setCurrentTime: (currentTime) => set({ currentTime }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setError: (error) => set({ error }),
-  setVideoSrc: (videoSrc) => set({ videoSrc }),
-  setImageSrc: (imageSrc) => set({ imageSrc }),
+  setVideoSrc: (videoSrc) => set(state => ({
+    videoSrc, fpsConfirmed: videoSrc === state.videoSrc ? state.fpsConfirmed : false,
+    pointEditHistory: videoSrc===state.videoSrc?state.pointEditHistory:{},
+    ...(videoSrc && videoSrc!==state.videoSrc ? {
+      sidebarTab:'controls', sidebarViews:{...state.sidebarViews,controls:'measurement'},
+      activeClickTarget:null, spectralLineStart:null,
+    } : {}),
+  })),
+  setImageSrc: (imageSrc) => set(state=>({ imageSrc, pointEditHistory:imageSrc===state.imageSrc?state.pointEditHistory:{} })),
   setImageObj: (imageObj) => set({ imageObj }),
   
   setPlotX: (plotX) => set({ plotX }),
@@ -219,12 +274,12 @@ const useStore = create((set, get) => ({
   setShowAccelerationVectors: (showAccelerationVectors) => set({ showAccelerationVectors }),
   setVectorScale: (vectorScale) => set({ vectorScale }),
   
-  setLineProfile: (lineProfile) => set({ lineProfile }),
-  setWavelengthCalibration: (wavelengthCalibration) => set({ wavelengthCalibration }),
+  setLineProfile: (input) => set(state => ({ lineProfile: typeof input === 'function' ? input(state.lineProfile) : input, wavelengthCalibration: anchorCalibration(state.wavelengthCalibration,state.lineProfile) })),
+  setWavelengthCalibration: (input) => set(state => ({ wavelengthCalibration: typeof input === 'function' ? input(state.wavelengthCalibration) : input })),
   setSpectralMode: (spectralMode) => set({ spectralMode }),
   setAnalysisChartMode: (analysisChartMode) => set({ analysisChartMode }),
   setSpectralData: (spectralData) => set({ spectralData }),
-  setActiveReferenceOverlays: (activeReferenceOverlays) => set({ activeReferenceOverlays }),
+  setActiveReferenceOverlays: (activeReferenceOverlays) => set({activeReferenceOverlays}),
   setActiveClickTarget: (activeClickTarget) => set({ activeClickTarget }),
   setShowGuidelines: (showGuidelines) => set({ showGuidelines }),
 
@@ -240,7 +295,28 @@ const useStore = create((set, get) => ({
         : newPointsInput;
       return { ...obj, points: nextPoints };
     });
-    set({ objects: nextObjects });
+    set({ objects: nextObjects, pointEditHistory:{...get().pointEditHistory,[activeObjId]:[]} });
+  },
+
+  // A review operation must still target the exact point that was selected.
+  editPoint: (objectId, index, expectedPoint, position) => {
+    const state=get(), object=state.objects.find(obj=>obj.id===objectId);
+    if(objectId==='COM' || state.activeObjId!==objectId || !object || !Number.isInteger(index) || index<0 || index>=object.points.length || object.points[index]!==expectedPoint)return false;
+    if(position!==null && (!Number.isFinite(position.x) || !Number.isFinite(position.y)))return false;
+    const before=object.points;
+    const after=position===null?before.filter((_,i)=>i!==index):before.map((point,i)=>i===index?{...point,x:position.x,y:position.y}:point);
+    const history=state.pointEditHistory[objectId] || [];
+    set({objects:state.objects.map(obj=>obj===object?{...obj,points:after}:obj),
+      pointEditHistory:{...state.pointEditHistory,[objectId]:[...history,{before,after}].slice(-50)}});
+    return true;
+  },
+  undoPointEdit: () => {
+    const state=get(), id=state.activeObjId, history=state.pointEditHistory[id] || [];
+    const edit=history.at(-1), object=state.objects.find(obj=>obj.id===id);
+    if(!edit || !object || object.points!==edit.after)return false;
+    set({objects:state.objects.map(obj=>obj===object?{...obj,points:edit.before}:obj),
+      pointEditHistory:{...state.pointEditHistory,[id]:history.slice(0,-1)}});
+    return true;
   },
 
   // Reset state to default
@@ -249,6 +325,7 @@ const useStore = create((set, get) => ({
       window.isResetting = true;
     }
     set({
+      pointEditHistory: {},
       objects: [
         { id: 'A', name: 'Object A', color: '#ef4444', points: [], mass: 1 },
         { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
@@ -286,7 +363,8 @@ const useStore = create((set, get) => ({
   }
 }));
 
-// Setup auto-saving subscription
+// Only persisted fields trigger a write: pointer movement and status updates do not.
+let lastSavedFields;
 useStore.subscribe((state) => {
   if (typeof window !== 'undefined' && window.isResetting) {
     return;
@@ -317,10 +395,16 @@ useStore.subscribe((state) => {
     activeReferenceOverlays: state.activeReferenceOverlays,
     showGuidelines: state.showGuidelines
   };
+  const fields = Object.values(stateToSave);
+  if (lastSavedFields && fields.every((value, index) => value === lastSavedFields[index])) return;
+  // Set before publishing status to avoid a recursive subscription write.
+  lastSavedFields = fields;
   try {
     localStorage.setItem('physTracker_autosave', JSON.stringify(stateToSave));
+    if (state.saveStatus !== 'saved') useStore.setState({ saveStatus: 'saved' });
   } catch (e) {
     console.error("Failed to write to autosave", e);
+    if (state.saveStatus !== 'error') useStore.setState({ saveStatus: 'error' });
   }
 });
 

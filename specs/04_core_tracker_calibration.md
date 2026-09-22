@@ -85,3 +85,42 @@ Regression: missing `setIsSettingOrigin` binding aborted scale initialization
 before endpoints were created. Present in the pre-integration local commit
 98ed63e as well as the initial integration. Fix: restore the Zustand binding.
 Validation evidence: `docs/testing/autotracking.md`, calibration follow-up section.
+
+## 7. Guided preparation and accessible manipulation follow-up — 2026-09-20
+
+- CAL-04: A new video remains in a preparation state until the user confirms FPS.
+  Scale/origin can remain available for expert access, but the recommended next
+  action and tracking controls must not imply readiness before confirmation.
+- CAL-05: After FPS confirmation, allow an explicit calibrated-distance path or a
+  continue-in-pixels path. Positioning axes is optional unless the experiment needs
+  a custom origin/orientation. Readiness and unit labels must reflect the chosen path.
+- CAL-06: Scale endpoints, origin and rotation handles are keyboard focusable or
+  have equivalent labeled numeric coordinate controls. Arrow movement, direct entry
+  and pointer dragging update the same native-media state and announce changes in
+  EN/ES. Visible focus and non-color state cues are required.
+- CAL-07: Video transport and tracking/object controls are absent or disabled with
+  an explanation before video media exists. They remain absent for still images.
+
+Validate a new video from upload through FPS confirmation, pixel-only/calibrated
+branches, axes adjustment and first point using pointer, keyboard and touch. Preserve
+coordinate transforms, stored project compatibility and all existing regression math.
+
+## Video timing trial implementation
+
+CAL-04 now uses a blocking confirmation dialog after video decode, with background
+MediaInfo detection, editable CFR suggestion, manual fallback and explicit VFR
+rejection. Saved FPS remains the default on restore; mismatch is explained and an
+edit requires acknowledgment. Review frame rate in the sidebar reopens this dialog.
+Points retain their original media timestamps; FPS controls frame stepping and
+identification. No slow-motion rescaling or VFR timestamp engine is implemented.
+See ADR 008 and the Phase 2 section of spec 10. CAL-05 remains pending.
+
+Owner revision supersedes VFR rejection: variable-rate videos are accepted using
+their average FPS. The dialog offers familiar presets and Other, with no decimal
+entry required for common rates. Saved/detected precision is retained internally
+when its matching preset is accepted. See spec 10's approachable FPS revision.
+
+Owner acceptance: UI/UX Phase 2 is complete. CAL-05's additional explicit scale/pixel
+choice and proposed axes progression are dropped. Preserve existing scale, axes
+and tracking behavior; earlier CAL-05 pending status is superseded. Keyboard/numeric
+manipulation remains future accessibility work.

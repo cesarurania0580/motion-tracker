@@ -1,12 +1,17 @@
+import RangeControl from './RangeControl';
+import {SPECTRUM_PLACEMENT_TEXT} from '../utils/spectrumWorkflow';
+import {mediaFitZoom} from '../utils/mediaFit';
+import {dispersionAxis, referencePoints, anchorCalibration, sampleSpectrum, validCalibration} from '../utils/spectroscopy';
+import {GUIDE_TEXT} from '../utils/guideText';
 import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { useStore } from '../store/useStore';
 import { TRANSLATIONS } from '../utils/translations';
 import { 
-  projectPointToSegmentT, getDistanceToSegment 
+  getDistanceToSegment
 } from '../utils/physicsMath';
 import { 
   Undo2, SkipBack, Play, Pause, SkipForward, ZoomOut, ZoomIn, 
-  Maximize, Trash2, CheckCircle2, Upload 
+  Maximize, Trash2, CheckCircle2
 } from 'lucide-react';
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
@@ -32,7 +37,7 @@ const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedD
 
 PureVideoPlayer.displayName = 'PureVideoPlayer';
 
-export default function VideoCanvas({ points, videoRef, autotracking }) {
+export default function VideoCanvas({ points, videoRef, autotracking, pointReview }) {
   // Zustand Store Selectors
   const theme = useStore((state) => state.theme);
   const language = useStore((state) => state.language);
@@ -458,6 +463,10 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
           const ny = (dx / len) * (spread / 2);
 
           ctx.beginPath();
+          ctx.moveTo(p1.x+nx,p1.y+ny);ctx.lineTo(p2.x+nx,p2.y+ny);
+          ctx.lineTo(p2.x-nx,p2.y-ny);ctx.lineTo(p1.x-nx,p1.y-ny);ctx.closePath();
+          ctx.fillStyle='rgba(163,230,53,0.16)';ctx.fill();
+          ctx.beginPath();
           ctx.strokeStyle = isDark ? 'rgba(163, 230, 53, 0.25)' : 'rgba(132, 204, 22, 0.35)';
           ctx.lineWidth = lw(1);
           ctx.moveTo(p1.x + nx, p1.y + ny);
@@ -502,61 +511,28 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
       drawHandle(p1, dragState === 'line_p1', 'P1');
       drawHandle(p2, dragState === 'line_p2', 'P2');
 
-      if (wavelengthCalibration) {
-        const p1_t = wavelengthCalibration.p1_t !== undefined ? wavelengthCalibration.p1_t : 0.0;
-        const p2_t = wavelengthCalibration.p2_t !== undefined ? wavelengthCalibration.p2_t : 1.0;
-        const r1_x = p1.x + p1_t * (p2.x - p1.x);
-        const r1_y = p1.y + p1_t * (p2.y - p1.y);
-        const r2_x = p1.x + p2_t * (p2.x - p1.x);
-        const r2_y = p1.y + p2_t * (p2.y - p1.y);
-
-        if (showGuidelines) {
-          ctx.beginPath();
-          ctx.strokeStyle = isDark ? 'rgba(6, 182, 212, 0.4)' : 'rgba(6, 182, 212, 0.55)';
-          ctx.lineWidth = lw(1.5);
-          ctx.setLineDash([4, 4]);
-          ctx.moveTo(r1_x, 0);
-          ctx.lineTo(r1_x, videoDims.h);
-          ctx.stroke();
-
-          ctx.beginPath();
-          ctx.strokeStyle = isDark ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.55)';
-          ctx.moveTo(r2_x, 0);
-          ctx.lineTo(r2_x, videoDims.h);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-
-        const drawRefMarker = (rx, ry, color, label) => {
-          ctx.beginPath();
-          ctx.arc(rx, ry, lw(6), 0, 2 * Math.PI);
-          ctx.fillStyle = color;
-          ctx.fill();
-          ctx.lineWidth = lw(2);
-          ctx.strokeStyle = 'white';
-          ctx.stroke();
-
-          ctx.beginPath();
-          ctx.moveTo(rx - lw(9), ry);
-          ctx.lineTo(rx + lw(9), ry);
-          ctx.moveTo(rx, ry - lw(9));
-          ctx.lineTo(rx, ry + lw(9));
-          ctx.strokeStyle = color;
-          ctx.lineWidth = lw(1.5);
-          ctx.stroke();
-
-          ctx.fillStyle = color;
-          ctx.font = `bold ${lw(10)}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.fillText(label, rx, ry - lw(12));
-        };
-
-        drawRefMarker(r1_x, r1_y, '#06b6d4', 'R1');
-        drawRefMarker(r2_x, r2_y, '#ef4444', 'R2');
-      }
 
       ctx.restore();
     }
+
+    // Wavelength references are fixed image points, independent of the sampling line.
+    const refs=referencePoints(wavelengthCalibration,lineProfile);
+    ctx.save();
+    refs.forEach((point,index)=>{
+      if(!point)return;
+      const color=index===0?'#22d3ee':'#f87171';
+      ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=lw(2);
+      if(showGuidelines) {
+        const axis=dispersionAxis(wavelengthCalibration,lineProfile);
+        const extent=Math.hypot(videoDims.w,videoDims.h);
+        ctx.setLineDash([lw(4),lw(4)]);ctx.beginPath();
+        ctx.moveTo(point.x-axis.y*extent,point.y+axis.x*extent);
+        ctx.lineTo(point.x+axis.y*extent,point.y-axis.x*extent);ctx.stroke();ctx.setLineDash([]);
+      }
+      ctx.beginPath();ctx.arc(point.x,point.y,lw(6),0,2*Math.PI);ctx.stroke();
+      ctx.font=`bold ${lw(12)}px sans-serif`;ctx.fillText(`R${index+1}`,point.x+lw(8),point.y-lw(8));
+    });
+    ctx.restore();
 
     // DRAW DYNAMIC KINEMATIC VECTORS
 
@@ -667,7 +643,7 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
 
   const sampleLineIntensity = useCallback(() => {
     const video = videoRef.current;
-    if ((!video && !imageObj) || !lineProfile || videoDims.w === 0) return;
+    if ((!video && !imageObj) || !lineProfile || videoDims.w === 0) {setSpectralData([]);return;}
     
     const canvas = document.createElement('canvas');
     canvas.width = videoDims.w;
@@ -685,90 +661,24 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
       return; 
     }
     
-    const imgData = ctx.getImageData(0, 0, videoDims.w, videoDims.h);
-    const data = imgData.data;
-    const width = imgData.width;
-    const height = imgData.height;
-    
-    const x1 = lineProfile.p1.x;
-    const y1 = lineProfile.p1.y;
-    const x2 = lineProfile.p2.x;
-    const y2 = lineProfile.p2.y;
-    
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 1) return;
-    
-    const ux = dx / len;
-    const uy = dy / len;
-    
-    const nx = -uy;
-    const ny = ux;
-    
-    const N = Math.floor(len); 
-    const spread = lineProfile.spread || 1;
-    const K = Math.floor(spread / 2);
-    const channel = lineProfile.channel || 'luma';
-    
-    const results = [];
-    
-    for (let i = 0; i <= N; i++) {
-      const pct = i / N;
-      const cx = x1 + pct * dx;
-      const cy = y1 + pct * dy;
-      
-      let sumIntensity = 0;
-      let sumR = 0, sumG = 0, sumB = 0;
-      let sampleCount = 0;
-      
-      for (let k = -K; k <= K; k++) {
-        const sx = Math.floor(cx + k * nx);
-        const sy = Math.floor(cy + k * ny);
-        
-        if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
-          const idx = (sy * width + sx) * 4;
-          const r = data[idx];
-          const g = data[idx + 1];
-          const b = data[idx + 2];
-          
-          sumR += r;
-          sumG += g;
-          sumB += b;
-          
-          let val = 0;
-          if (channel === 'red') val = r;
-          else if (channel === 'green') val = g;
-          else if (channel === 'blue') val = b;
-          else {
-            val = 0.299 * r + 0.587 * g + 0.114 * b;
-          }
-          sumIntensity += val;
-          sampleCount++;
-        }
-      }
-      
-      if (sampleCount > 0) {
-        results.push({
-          index: i,
-          distance: i,
-          intensity: Math.round(sumIntensity / sampleCount),
-          r: Math.round(sumR / sampleCount),
-          g: Math.round(sumG / sampleCount),
-          b: Math.round(sumB / sampleCount)
-        });
-      }
+    try {
+      const imgData=ctx.getImageData(0,0,videoDims.w,videoDims.h);
+      setSpectralData(sampleSpectrum(imgData,lineProfile));
+      useStore.setState({spectralError:false});
+    } catch {
+      setSpectralData([]);
+      useStore.setState({spectralError:true});
     }
-    
-    setSpectralData(results);
+
   }, [videoRef, lineProfile, videoDims, imageObj, setSpectralData]);
 
   // Sync sampling on video updates or line profile changes
   useEffect(() => {
-    if (lineProfile) {
-      sampleLineIntensity();
-    }
+    sampleLineIntensity();
   }, [currentTime, lineProfile, sampleLineIntensity]);
+
+  // Programmatic tool selection must stop the actual video as well as its UI state.
+  useEffect(()=>{if(!isPlaying)videoRef.current?.pause();},[isPlaying,videoRef]);
 
   // --- TRIGGER RENDER LOOP (FRAME SYNC) ---
   useEffect(() => {
@@ -832,19 +742,10 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
     if (imageObj && videoDims.w > 0 && scrollContainerRef.current) {
       const w = videoDims.w;
       const h = videoDims.h;
-      const availableW = scrollContainerRef.current.clientWidth - 40; 
-      const availableH = scrollContainerRef.current.clientHeight - 40;
-      const scaleW = availableW / w;
-      const scaleH = availableH / h;
-      const fitScale = Math.min(scaleW, scaleH);
-      setZoom(fitScale < 1 ? fitScale : 1);
-      
-      const timer = setTimeout(() => {
-        renderFrame();
-      }, 100);
-      return () => clearTimeout(timer);
+      const fitScale=mediaFitZoom(w,h,scrollContainerRef.current.clientWidth,scrollContainerRef.current.clientHeight);
+      if(fitScale!==null)setZoom(fitScale);
     }
-  }, [imageObj, videoDims, renderFrame, setZoom]);
+  }, [imageObj, videoDims, setZoom]);
 
   useEffect(() => {
     renderFrame();
@@ -866,6 +767,28 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
     if ((!videoRef.current && !imageObj) || showInputModal) return;
 
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    if(pointReview.status==='correcting') {
+      e.preventDefault();pointReview.place({x,y});return;
+    }
+    if(pointReview.selection) {pointReview.cancel();return;}
+    if (activeClickTarget) {
+      e.preventDefault();
+      const store=useStore.getState();
+      if(activeClickTarget==='r1' || activeClickTarget==='r2') {
+        const index=activeClickTarget==='r1'?1:2;
+        setWavelengthCalibration(prev=>({...anchorCalibration(prev,lineProfile),coordinateMode:'image',[`p${index}_point`]:{x,y}}));
+        setActiveClickTarget(null);
+      } else if(activeClickTarget==='spectrum_p1') {
+        useStore.setState({spectralLineStart:{x,y},activeClickTarget:'spectrum_p2'});
+      } else if(activeClickTarget==='spectrum_p2' && store.spectralLineStart) {
+        if(Math.hypot(x-store.spectralLineStart.x,y-store.spectralLineStart.y)<1)return;
+        const next={p1:store.spectralLineStart,p2:{x,y},spread:lineProfile?.spread || 5,channel:lineProfile?.channel || 'luma'};
+        setLineProfile(next);
+        store.setSpectralMode(validCalibration(store.wavelengthCalibration,next)?'wavelength':'pixels');
+        useStore.setState({activeClickTarget:null,spectralLineStart:null,analysisChartMode:'spectroscopy'});
+      }
+      return;
+    }
     if (autotracking.enabled) { e.preventDefault(); autotracking.select(x,y); return; }
     
     const isTouch = e.pointerType === 'touch' || e.pointerType === 'pen';
@@ -874,6 +797,16 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
 
     let isInteractiveTarget = false;
     let newDragState = null;
+
+    const ui=useStore.getState();
+    if(ui.sidebarTab==='tools' && ui.sidebarViews.tools==='spectroscopy' && ui.spectrumStep==='calibrate') {
+      const refs=referencePoints(wavelengthCalibration,lineProfile);
+      const hit=refs.findIndex(point=>point && Math.hypot(x-point.x,y-point.y)<hitRadius);
+      if(hit>=0) {
+        e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);
+        setDragState(`spectral_ref_${hit+1}`);useStore.getState().setIsPlaying(false);return;
+      }
+    }
 
     // PRIORITY 0.1: TAPE MEASURE
     if (tapeMeasure) {
@@ -893,40 +826,6 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
 
     // PRIORITY 0.15: LINE PROFILE
     if (!isInteractiveTarget && lineProfile) {
-      if (activeClickTarget && wavelengthCalibration) {
-        isInteractiveTarget = true;
-        const t_proj = projectPointToSegmentT(x, y, lineProfile.p1.x, lineProfile.p1.y, lineProfile.p2.x, lineProfile.p2.y, false);
-        setWavelengthCalibration(prev => ({
-          ...prev,
-          p1_t: activeClickTarget === 'r1' ? t_proj : (prev?.p1_t ?? 0.0),
-          p2_t: activeClickTarget === 'r2' ? t_proj : (prev?.p2_t ?? 1.0)
-        }));
-        setActiveClickTarget(null);
-        return;
-      }
-
-      if (wavelengthCalibration) {
-        const p1_t = wavelengthCalibration.p1_t !== undefined ? wavelengthCalibration.p1_t : 0.0;
-        const p2_t = wavelengthCalibration.p2_t !== undefined ? wavelengthCalibration.p2_t : 1.0;
-        const r1_x = lineProfile.p1.x + p1_t * (lineProfile.p2.x - lineProfile.p1.x);
-        const r1_y = lineProfile.p1.y + p1_t * (lineProfile.p2.y - lineProfile.p1.y);
-        const r2_x = lineProfile.p1.x + p2_t * (lineProfile.p2.x - lineProfile.p1.x);
-        const r2_y = lineProfile.p1.y + p2_t * (lineProfile.p2.y - lineProfile.p1.y);
-
-        const distR1 = Math.sqrt(Math.pow(x - r1_x, 2) + Math.pow(y - r1_y, 2));
-        const distR2 = Math.sqrt(Math.pow(x - r2_x, 2) + Math.pow(y - r2_y, 2));
-
-        if (distR1 < hitRadius && p1_t > 0.02 && p1_t < 0.98) {
-          isInteractiveTarget = true;
-          newDragState = 'line_r1';
-          setDragState('line_r1');
-        } else if (distR2 < hitRadius && p2_t > 0.02 && p2_t < 0.98) {
-          isInteractiveTarget = true;
-          newDragState = 'line_r2';
-          setDragState('line_r2');
-        }
-      }
-
       if (!isInteractiveTarget) {
         const distP1 = Math.sqrt(Math.pow(x - lineProfile.p1.x, 2) + Math.pow(y - lineProfile.p1.y, 2));
         const distP2 = Math.sqrt(Math.pow(x - lineProfile.p2.x, 2) + Math.pow(y - lineProfile.p2.y, 2));
@@ -1054,7 +953,8 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
         if (newDragState) {
           setIsSettingOrigin(false);
         } else {
-          setOrigin({ x, y }); 
+          useStore.setState({axesConfirmed:true});
+          setOrigin({ x, y });
           setOriginAngle(0); 
           setIsSettingOrigin(false); 
           setDragState(null); 
@@ -1103,7 +1003,11 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
     
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
 
-    if (dragState === 'tape_p1') {
+    if (dragState === 'spectral_ref_1' || dragState === 'spectral_ref_2') {
+      const index=dragState==='spectral_ref_1'?1:2;
+      setWavelengthCalibration(prev=>({...anchorCalibration(prev,lineProfile),coordinateMode:'image',
+        [`p${index}_point`]:{x:Math.max(0,Math.min(videoDims.w-1,x)),y:Math.max(0,Math.min(videoDims.h-1,y))}}));
+    } else if (dragState === 'tape_p1') {
       setTapeMeasure({ ...tapeMeasure, p1: { x, y } });
     } else if (dragState === 'tape_p2') {
       setTapeMeasure({ ...tapeMeasure, p2: { x, y } });
@@ -1125,15 +1029,6 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
       setLineProfile({ ...lineProfile, p1: { x, y } });
     } else if (dragState === 'line_p2') {
       setLineProfile({ ...lineProfile, p2: { x, y } });
-    } else if (dragState === 'line_r1' || dragState === 'line_r2') {
-      if (lineProfile) {
-        const t_proj = projectPointToSegmentT(x, y, lineProfile.p1.x, lineProfile.p1.y, lineProfile.p2.x, lineProfile.p2.y, true);
-        setWavelengthCalibration(prev => ({
-          ...prev,
-          p1_t: dragState === 'line_r1' ? t_proj : (prev?.p1_t ?? 0.0),
-          p2_t: dragState === 'line_r2' ? t_proj : (prev?.p2_t ?? 1.0)
-        }));
-      }
     } else if (dragState === 'line_body') {
       const dx = x - lineProfileStartRef.current.click.x;
       const dy = y - lineProfileStartRef.current.click.y;
@@ -1143,10 +1038,12 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
         p2: { x: lineProfileStartRef.current.p2.x + dx, y: lineProfileStartRef.current.p2.y + dy }
       });
     } else if (dragState === 'origin') {
+      useStore.setState({axesConfirmed:true});
       setOrigin({ x, y });
     } else if (dragState === 'rotate' && origin) {
       const dx = x - origin.x;
       const dy = y - origin.y;
+      useStore.setState({axesConfirmed:true});
       setOriginAngle(Math.atan2(dy, dx));
     } else if (dragState === 'point' && draggedPointIndex !== null && activeObjId !== 'COM') {
       const updatedPoints = [...points];
@@ -1309,12 +1206,8 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
       const h = videoRef.current.videoHeight;
       if (w > 0 && h > 0) {
         setVideoDims({ w, h });
-        const availableW = scrollContainerRef.current.clientWidth - 40; 
-        const availableH = scrollContainerRef.current.clientHeight - 40;
-        const scaleW = availableW / w;
-        const scaleH = availableH / h;
-        const fitScale = Math.min(scaleW, scaleH);
-        setZoom(fitScale < 1 ? fitScale : 1);
+        const fitScale=mediaFitZoom(w,h,scrollContainerRef.current.clientWidth,scrollContainerRef.current.clientHeight);
+        if(fitScale!==null)setZoom(fitScale);
         
         setTimeout(() => renderFrame(), 100);
       }
@@ -1322,7 +1215,7 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
   }, [videoRef, renderFrame, setDuration, setVideoDims, setZoom]);
 
   const handleVideoEnded = useCallback(() => setIsPlaying(false), [setIsPlaying]);
-  const handleVideoError = useCallback(() => setError("Error loading video."), [setError]);
+  const handleVideoError = useCallback(() => setError((GUIDE_TEXT[language] || GUIDE_TEXT.en).videoError), [setError, language]);
   
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
@@ -1349,10 +1242,17 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
 
   return (
     <div className={`flex-1 flex flex-col min-w-0 ${styles.bg} relative`}>
+      {(activeClickTarget==='r1' || activeClickTarget==='r2') && <div role="status" className="absolute top-2 left-2 right-2 z-40 pointer-events-none flex justify-center">
+        <div className="rounded-xl border border-cyan-400/60 bg-slate-900/95 text-white px-4 py-2 text-sm shadow-lg flex flex-wrap items-center gap-2 pointer-events-auto">
+          <span>{(SPECTRUM_PLACEMENT_TEXT[language] || SPECTRUM_PLACEMENT_TEXT.en).instruction.replace('{n}',activeClickTarget==='r1'?1:2).replace('{value}',wavelengthCalibration?.[activeClickTarget==='r1'?'p1_wl':'p2_wl'])}</span>
+          <button type="button" className="min-h-11 underline px-2" onClick={()=>useStore.setState({activeClickTarget:null,spectralLineStart:null})}>{t.cancel}</button>
+        </div>
+      </div>}
       {/* MOVED TRASH ICON HERE - FIXED OVERLAY */}
       <div 
         ref={trashRef} 
-        className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : `${styles.panel} opacity-90`}`}
+        aria-hidden={dragState !== 'point'}
+        className={`absolute top-8 right-6 z-50 p-6 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-200 ${dragState === 'point' ? 'opacity-100 translate-y-0' : 'invisible opacity-0 -translate-y-4 pointer-events-none'} ${isHoveringTrash ? 'bg-red-900/90 border-red-500 scale-110 text-white' : styles.panel}`}
       > 
         <Trash2 size={32} /> 
         <span className="text-xs font-bold mt-2"> {t.dropToDelete} </span> 
@@ -1371,23 +1271,7 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
 
       <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start p-4 relative ${styles.workspaceBg}`}>
         {/* Snapping Mode Banner overlay */}
-        {activeClickTarget && (
-          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[100] px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-white rounded-full font-bold shadow-2xl flex items-center gap-3 transition-all animate-pulse select-none border border-white/20">
-            <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-            <span className="text-xs tracking-wide">
-              {activeClickTarget === 'r1' ? t.snappingPrompt : t.snappingPrompt2}
-            </span>
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveClickTarget(null);
-              }} 
-              className="ml-2 px-2 py-0.5 rounded bg-black/35 hover:bg-black/50 text-[10px] text-amber-200 transition font-bold"
-            >
-              {t.cancel}
-            </button>
-          </div>
-        )}
+
         
         {dragState === 'point' && ( 
           <div className="fixed z-[100] pointer-events-none transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}> 
@@ -1410,7 +1294,7 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
                 type="number" 
                 value={realDistanceInput} 
                 onChange={(e) => setRealDistanceInput(e.target.value)} 
-                className={`rounded px-3 py-2 w-24 text-center focus:outline-none focus:border-blue-500 text-lg ${styles.input}`} 
+                className={`rounded px-3 py-2 w-24 text-center focus:outline-none focus:border-cyan-600 text-lg ${styles.input}`}
                 autoFocus 
               /> 
               <span className={`font-semibold text-lg ${styles.textSecondary}`}>m</span> 
@@ -1429,6 +1313,8 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
             style={{ width: Math.floor(videoDims.w * zoom), height: Math.floor(videoDims.h * zoom) }}
           >
             {videoSrc && videoElement}
+            {pointReview.selection && <div aria-hidden="true" className="absolute rounded-full border-2 border-yellow-400 pointer-events-none z-20"
+              style={{left:pointReview.selection.point.x*zoom-12,top:pointReview.selection.point.y*zoom-12,width:24,height:24}} />}
             {autotracking.enabled && autotracking.target && autotracking.status!=='lost' && <div aria-hidden="true"
               className="absolute border border-dashed border-cyan-400 pointer-events-none z-20"
               style={{left:(autotracking.target.searchX-autotracking.target.radiusX)*zoom,
@@ -1460,51 +1346,49 @@ export default function VideoCanvas({ points, videoRef, autotracking }) {
               onPointerCancel={handlePointerUp} 
               onMouseEnter={() => setIsHoveringCanvas(true)} 
               onMouseLeave={() => setIsHoveringCanvas(false)} 
-              className={`${activeClickTarget ? 'cursor-crosshair' : dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'pan' ? 'cursor-grabbing' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`} 
+              className={`${activeClickTarget || pointReview.status==='correcting' ? 'cursor-crosshair' : dragState === 'origin' ? 'cursor-move' : dragState === 'rotate' ? 'cursor-grab' : dragState === 'pan' ? 'cursor-grabbing' : dragState === 'point' || dragState === 'calibration' ? 'cursor-grabbing' : (isSettingOrigin) ? 'cursor-crosshair' : (isTracking && !dragState) ? 'cursor-default' : 'cursor-default'}`}
             />
           </div>
         ) : ( 
-          <div className={`w-full text-center mt-20 ${styles.textSecondary}`}> 
-            <Upload size={48} className="mx-auto mb-4 opacity-50" /> 
-            <p>{t.uploadPrompt}</p> 
-          </div> 
+          <div className={`w-full text-center mt-20 ${styles.textSecondary}`}>{t.uploadPrompt}</div>
         )}
       </div>
 
-      <div className={`h-20 border-t flex items-center justify-center gap-8 px-6 shrink-0 z-30 ${styles.panel}`}>
+      <div className={`video-transport min-h-20 border-t flex flex-wrap items-center justify-center gap-2 px-2 shrink-0 z-30 ${styles.panel}`}>
         <button 
           onClick={undoLastPoint} 
           disabled={points.length === 0 || activeObjId === 'COM'} 
           className={`p-3 rounded-full transition disabled:opacity-30 ${styles.buttonSecondary}`} 
-          title={t.undoLast}
+          title={t.undoLast} aria-label={t.undoLast}
         > 
           <Undo2 size={20} /> 
         </button>
-        <div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'} ${imageObj ? 'opacity-40 pointer-events-none' : ''}`}> 
-          <button onClick={() => {autotracking.navigate(); stepBackward();}} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame}> <SkipBack size={20} /> </button>
-          <button onClick={() => {autotracking.navigate(); togglePlay();}} disabled={!!imageObj} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-900/20" title={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button>
-          <button onClick={() => {autotracking.navigate(); stepForward();}} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-blue-500 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame}> <SkipForward size={20} /> </button>
+        {!imageSrc && <><div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'} ${imageObj ? 'opacity-40 pointer-events-none' : ''}`}>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepBackward();}} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame} aria-label={t.prevFrame}> <SkipBack size={20} /> </button>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); togglePlay();}} disabled={!!imageObj} className="p-3 bg-cyan-400 hover:bg-cyan-300 text-slate-950 rounded-full transition shadow-lg shadow-cyan-900/20" title={t.playPause} aria-label={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepForward();}} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame} aria-label={t.nextFrame}> <SkipForward size={20} /> </button>
         </div>
-        <div className="flex-1 max-w-xl mx-4 flex items-center gap-3"> 
+        <div className="flex-1 min-w-40 max-w-xl mx-2 flex items-center gap-2">
           <span className={`text-xs font-mono w-12 text-right ${styles.textSecondary}`}>{formatTime(currentTime)}</span> 
-          <input 
-            type="range" 
+          <RangeControl
+            aria-label={language==='es'?'Posición del video':'Video position'}
             min="0" 
             max={duration || 100} 
             step="0.01" 
             value={currentTime} 
-            onChange={(e) => {autotracking.navigate(); handleSeek(e);}}
+            onChange={(e) => {pointReview.cancel(); autotracking.navigate(); handleSeek(e);}}
             disabled={!!imageObj} 
-            className="flex-1 h-1.5 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-30 disabled:pointer-events-none" 
+            className="flex-1 min-w-0"
           /> 
           <span className={`text-xs font-mono w-12 ${styles.textSecondary}`}>{formatTime(duration)}</span> 
         </div>
+        </>}
         <div className={`flex items-center gap-2 px-4 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'}`}> 
-          <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.zoomOut}> <ZoomOut size={18} /> </button> 
+          <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.zoomOut} aria-label={t.zoomOut}> <ZoomOut size={18} /> </button>
           <span className={`text-sm font-mono w-12 text-center ${styles.textSecondary}`}>{Math.round(zoom * 100)}%</span> 
-          <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.zoomIn}> <ZoomIn size={18} /> </button> 
+          <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.zoomIn} aria-label={t.zoomIn}> <ZoomIn size={18} /> </button>
           <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div> 
-          <button onClick={() => setZoom(1)} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.resetView}> <Maximize size={18} /> </button> 
+          <button onClick={() => setZoom(1)} className={`p-2 rounded-full ${styles.buttonSecondary}`} title={t.resetView} aria-label={t.resetView}> <Maximize size={18} /> </button>
         </div>
       </div>
     </div>
