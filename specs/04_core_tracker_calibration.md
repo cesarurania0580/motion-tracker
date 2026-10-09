@@ -124,3 +124,15 @@ Owner acceptance: UI/UX Phase 2 is complete. CAL-05's additional explicit scale/
 choice and proposed axes progression are dropped. Preserve existing scale, axes
 and tracking behavior; earlier CAL-05 pending status is superseded. Keyboard/numeric
 manipulation remains future accessibility work.
+
+## Workspace zoom repair — 2026-10-08
+
+- Fit to workspace recomputes the initial media-fit calculation using the current
+  viewport, applies it and resets horizontal/vertical scrolling.
+- Zoom Out can reach that fit below 50%; it must never enlarge the media, including
+  after a viewport resize. Zoom In uses proportional 25% steps, capped at 400%.
+- Repeated Zoom Out stops at fit. Hidden/invalid viewport measurements preserve
+  the current view. Fit is available for both images and video, with EN/ES labels.
+- Zoom changes preserve points, axes, scale, timestamps and current video frame.
+- Check high-resolution landscape/portrait clips, scrolling, resize/orientation,
+  images, and desktop/tablet controls. Browser acceptance remains an owner check.

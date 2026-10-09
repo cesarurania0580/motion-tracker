@@ -286,3 +286,15 @@ axes action and extra progression cues. This supersedes those portions of GW-15
 and earlier Phase 2 planning; they are no longer pending work. Next: evaluate
 Phase 3 keyboard/numeric measurement benefits before implementation. Broader
 accessibility/device validation remains separate. No release is authorized.
+
+## Touch tracking-menu repair — 2026-10-08
+
+An internal finger/pen tap must survive focus loss until its normal click selects
+Manual Tracking. Do not activate on pointer-down. Outside pointer presses and
+Escape dismiss the menu; keyboard focus leaving the menu still dismisses it.
+Preserve mouse selection, arrow navigation, FPS/COM guards and tracking coordinates.
+Regression replay must cover internal pointer-down → blur to null/outside → click,
+keyboard focus departure, outside presses and Escape after a cancelled touch.
+Physical iPad acceptance: set axes, select Manual Tracking, reopen to verify its
+checkmark, then move the crosshair and record/advance a point. Desktop mouse and
+keyboard acceptance remain required. This repair does not change zoom behavior.

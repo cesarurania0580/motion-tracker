@@ -14,6 +14,7 @@ export default function TrackingModeMenu({tracking, renderTrigger}) {
   const container=useRef(null);
   const trigger=useRef(null);
   const menu=useRef(null);
+  const pointerInteraction=useRef(false);
   const menuId=useId();
   const t=(TRANSLATIONS[language] || TRANSLATIONS.en).auto;
   const mode=tracking.enabled?'automatic':isTracking?'manual':'off';
@@ -24,13 +25,27 @@ export default function TrackingModeMenu({tracking, renderTrigger}) {
 
   useEffect(()=>{
     if(!open)return;
+    pointerInteraction.current=false;
     const outside=event=>{
       if(!container.current?.contains(event.target))setOpen(false);
     };
     document.addEventListener('pointerdown',outside);
+    const keyboard=event=>{
+      pointerInteraction.current=false;
+      if(event.key==='Escape') {
+        event.preventDefault();setOpen(false);
+        (trigger.current ?? container.current?.querySelector('button'))?.focus();
+      } else if(event.key==='Tab' && !container.current?.contains(document.activeElement)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('keydown',keyboard,true);
     const selected=menu.current?.querySelector('button[aria-checked="true"]:not(:disabled)');
     (selected ?? menu.current?.querySelector('button:not(:disabled)'))?.focus();
-    return ()=>document.removeEventListener('pointerdown',outside);
+    return ()=>{
+      document.removeEventListener('pointerdown',outside);
+      document.removeEventListener('keydown',keyboard,true);
+    };
   },[open]);
 
   function choose(next) {
@@ -52,14 +67,12 @@ export default function TrackingModeMenu({tracking, renderTrigger}) {
         store.setActiveClickTarget(null);
       }
     }
+    if(next==='manual' || next==='automatic')store.navigateSidebar('data','root');
     setOpen(false);
     (trigger.current ?? container.current?.querySelector('button'))?.focus();
   }
 
   function handleKeys(event) {
-    if(event.key==='Escape') {
-      event.preventDefault();setOpen(false);(trigger.current ?? container.current?.querySelector('button'))?.focus();return;
-    }
     if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
     event.preventDefault();
     const buttons=Array.from(menu.current.querySelectorAll('button:not(:disabled)'));
@@ -75,8 +88,12 @@ export default function TrackingModeMenu({tracking, renderTrigger}) {
   }
 
   const itemClass='flex w-full items-center justify-between gap-4 rounded px-3 py-2 text-left text-sm outline-none focus:bg-cyan-700 focus:text-white disabled:opacity-40 disabled:cursor-not-allowed';
-  return <div ref={container} className="relative" onBlur={event=>{
-    if(!event.currentTarget.contains(event.relatedTarget))setOpen(false);
+  return <div ref={container} className="relative"
+    onPointerDownCapture={()=>{pointerInteraction.current=true;}}
+    onBlur={event=>{
+    // Safari can drop focus during an internal press before delivering click.
+    // Keep its target mounted; outside presses and keyboard departure dismiss.
+    if(!pointerInteraction.current && !event.currentTarget.contains(event.relatedTarget))setOpen(false);
   }}>
     {renderTrigger ? renderTrigger({label, disabled, open, toggle:()=>setOpen(value=>!value), mode}) : (
 <button id="tracking-mode-trigger" ref={trigger} type="button" disabled={disabled} title={label} aria-label={label}

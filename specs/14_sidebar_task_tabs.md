@@ -307,3 +307,11 @@ Rendered integration checks cover these states; owner browser acceptance is pend
 Owner welcome-dialog revision supersedes SIDE-20's hidden sidebar: the sidebar now
 remains visible behind the dimmed, inert app while the welcome dialog offers media
 or project opening. Spec 10 defines the authoritative entry/restoration behavior.
+
+## Tracking selection opens Data — 2026-10-08
+
+Selecting Manual or Automatic Tracking opens the Data tab immediately so recorded
+measurements are visible. Automatic selection retains its remembered Controls →
+Automatic view, accessible by selecting Controls; the running Pause strip remains
+available while Data is shown. Stopping tracking keeps the existing Controls route.
+This is selection-time navigation; users may switch tabs afterward.
