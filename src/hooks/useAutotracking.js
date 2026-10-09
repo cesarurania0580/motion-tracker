@@ -3,6 +3,7 @@ import {useStore} from '../store/useStore';
 import {upsertTrackedPoint} from '../utils/autotracker';
 import {DETAIL_OPTIONS as DEFAULT_TRACKING_OPTIONS, seedDetailed, retuneDetailed, advanceDetailed, trackingRegion, predictTarget} from '../utils/detailTracker';
 import {seekVideo} from '../utils/videoSeek';
+import {createPointId} from '../utils/pointId';
 
 export function useAutotracking(videoRef) {
   const [enabled,setEnabled]=useState(false);
@@ -68,7 +69,7 @@ export function useAutotracking(videoRef) {
     const s=state.current,store=useStore.getState(),video=videoRef.current;
     if(store.activeObjId==='COM')return;
     const native=showSession(session);
-    const point={...native,time:video.currentTime,id:crypto.randomUUID()};
+    const point={...native,time:video.currentTime,id:createPointId()};
     s.writing=true;
     try {store.setPoints(points=>upsertTrackedPoint(points,point,store.fps));}
     finally{s.writing=false;}

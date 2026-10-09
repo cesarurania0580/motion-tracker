@@ -67,7 +67,7 @@ export default function TrackingModeMenu({tracking, renderTrigger}) {
         store.setActiveClickTarget(null);
       }
     }
-    if(next==='manual' || next==='automatic')store.navigateSidebar('data','root');
+    if(next==='manual')store.navigateSidebar('data','root');
     setOpen(false);
     (trigger.current ?? container.current?.querySelector('button'))?.focus();
   }

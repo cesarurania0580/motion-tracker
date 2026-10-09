@@ -17,7 +17,9 @@ function harness() {
   const state={language:'en',theme:'dark',activeObjId:'A',videoSrc:'video',fpsConfirmed:true,isTracking:false,isSettingOrigin:true};
   for(const key of ['isTracking','isSettingOrigin','isCalibrating','showInputModal','activeClickTarget'])
     state[`set${key[0].toUpperCase()+key.slice(1)}`]=value=>{state[key]=value;};
-  state.navigateSidebar=()=>{};
+  state.sidebarViews={controls:'root',tools:'root'};
+  state.navigateSidebar=(tab,view)=>{state.sidebarTab=tab;state.sidebarViews[tab]=view;};
+  const tracking={enabled:false,toggle(){this.enabled=!this.enabled;}};
   const store=selector=>selector(state);store.getState=()=>state;
   const hooks={
     useState(initial){const at=index++;if(!(at in slots))slots[at]=initial;
@@ -34,7 +36,7 @@ function harness() {
   const imports=name=>name==='react'?hooks:name==='../store/useStore'?{useStore:store}:
     name==='../utils/translations'?{TRANSLATIONS:{en:{auto:{}}}}:require(name);
   vm.runInNewContext(code,{require:imports,module,exports:module.exports,document});
-  function render(){index=0;effects=[];tree=module.exports.default({tracking:{enabled:false},renderTrigger:props=>({props})});
+  function render(){index=0;effects=[];tree=module.exports.default({tracking,renderTrigger:props=>({props})});
     tree.props.ref.current=container;
     const menu=tree.props.children[1];if(menu)menu.props.ref.current={querySelector:()=>inside};
     effects.forEach(fn=>fn());
@@ -44,7 +46,7 @@ function harness() {
     open(){tree.props.children[0].props.toggle();render();},
     pointer(type='touch'){tree.props.onPointerDownCapture?.({pointerType:type,target:inside});documentEvent('pointerdown',{target:inside,pointerType:type});},
     blur(target){tree.props.onBlur({currentTarget:container,relatedTarget:target});render();},
-    click(){const menu=tree.props.children[1];if(menu)menu.props.children[0].props.onClick();render();},
+    click(mode='manual'){const menu=tree.props.children[1];if(menu)menu.props.children[mode==='automatic'?1:0].props.onClick();render();},
     key(key){documentEvent('keydown',{key,preventDefault(){}});render();},
     outsidePress(){documentEvent('pointerdown',{target:outside});render();},
     get openNow(){return !!tree.props.children[1];},get restoredFocus(){return restoredFocus;}
@@ -60,6 +62,14 @@ for(const pointer of ['touch','pen','mouse'])test(`Tracking selection survives $
     h.click();assert.equal(h.state.isTracking,true);assert.equal(h.state.isSettingOrigin,false);
     assert.equal(h.openNow,false);
   }
+});
+
+test('Tracking selection opens Data for manual and Automatic Controls for automatic',()=>{
+  const h=harness();h.open();h.click('manual');
+  assert.equal(h.state.sidebarTab,'data');
+  h.open();h.click('automatic');
+  assert.equal(h.state.sidebarTab,'controls');
+  assert.equal(h.state.sidebarViews.controls,'automatic');
 });
 test('Outside presses and keyboard focus departure dismiss tracking menu',()=>{
   const h=harness();h.open();h.pointer();h.outsidePress();assert.equal(h.openNow,false);

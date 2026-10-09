@@ -315,3 +315,10 @@ measurements are visible. Automatic selection retains its remembered Controls �
 Automatic view, accessible by selecting Controls; the running Pause strip remains
 available while Data is shown. Stopping tracking keeps the existing Controls route.
 This is selection-time navigation; users may switch tabs afterward.
+
+## Owner correction — tracking-mode destinations
+
+Supersedes the automatic portion of the preceding navigation requirement:
+Manual Tracking opens Data; Automatic Tracking opens Controls → Automatic.
+Automatic target selection and setup/run controls therefore remain available in
+its initial view. Users may switch to Data afterward. Preserve touch menu repair.

@@ -29,10 +29,10 @@ export default function MotionChart({data,plotX,plotY,xScale,yScale,labels,style
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart data={data} margin={{top:20,right:30,left:50,bottom:50}}>
         <CartesianGrid strokeDasharray="3 3" stroke={styles.chartGrid} />
-        <XAxis dataKey={plotX} type="number" stroke={styles.chartAxis} fontSize={16}
+        <XAxis dataKey={plotX} type="number" allowDataOverflow stroke={styles.chartAxis} fontSize={16}
           domain={[xScale.min,xScale.max]} ticks={xScale.ticks} tickFormatter={formatTicks(xScale.step)}
           label={{value:labels[plotX],position:'bottom',offset:20,fill:styles.chartAxis,fontSize:18}} />
-        <YAxis stroke={styles.chartAxis} fontSize={16} domain={[yScale.min,yScale.max]} ticks={yScale.ticks}
+        <YAxis type="number" allowDataOverflow stroke={styles.chartAxis} fontSize={16} domain={[yScale.min,yScale.max]} ticks={yScale.ticks}
           tickFormatter={formatTicks(yScale.step)} label={{value:labels[plotY],angle:-90,position:'insideLeft',offset:-40,fill:styles.chartAxis,fontSize:18}} />
         {fitEquation && <Line type="linear" dataKey="fitYContinuous" stroke="#f59e0b" strokeWidth={3}
           strokeDasharray="5 5" dot={false} activeDot={false} pointerEvents="none" isAnimationActive={false} />}

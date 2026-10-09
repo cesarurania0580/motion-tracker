@@ -79,3 +79,11 @@ fits enabled, edge points and graph export. Existing build warnings remain.
 Owner validation must cover motion and spectroscopy empty states separately. This
 follow-up changes presentation and availability only; it does not redefine fit,
 sampling or export mathematics.
+
+## Fit-line boundary repair — 2026-10-08
+
+Clip motion trend lines to both numeric axis boundaries in preview and scientific
+PNG export. Keep fit calculations, sampled curve values, equation and R² intact.
+Retain SVG clipping definitions when cloning for export. Verify a descending line
+crossing the lower boundary and other fit types at all four plot edges; owner
+visual preview/export acceptance remains pending.
