@@ -1,3 +1,9 @@
+import {spectralRows, spectrumCSV, validCalibration} from '../utils/spectroscopy';
+import {SPECTRUM_WORKFLOW_TEXT} from '../utils/spectrumWorkflow';
+import {SPECTRUM_TEXT} from '../utils/spectrumText';
+import {ANALYSIS_TEXT} from '../utils/analysisText';
+import {axisUnit,parameterUnits,interpretationKey} from '../utils/analysisPresentation';
+import MotionChart from './MotionChart';
 import React from 'react';
 import { useStore } from '../store/useStore';
 import { TRANSLATIONS } from '../utils/translations';
@@ -5,8 +11,8 @@ import {
   Calculator, Info, LayoutTemplate, Camera, Download, Activity 
 } from 'lucide-react';
 import { 
-  ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, ErrorBar, ReferenceLine 
+  ComposedChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 
 // --- HELPER: FORMAT TICKS DYNAMICALLY ---
@@ -64,7 +70,7 @@ export default function AnalysisPanel({
   const cropEnd = useStore((state) => state.cropEnd);
   const pixelsPerMeter = useStore((state) => state.pixelsPerMeter);
   const wavelengthCalibration = useStore((state) => state.wavelengthCalibration);
-  const spectralMode = useStore((state) => state.spectralMode);
+  const requestedSpectralMode = useStore((state) => state.spectralMode);
   const lineProfile = useStore((state) => state.lineProfile);
   const spectralData = useStore((state) => state.spectralData);
   const activeReferenceOverlays = useStore((state) => state.activeReferenceOverlays) || { h2: false, he: false, hg: false };
@@ -84,6 +90,17 @@ export default function AnalysisPanel({
 
   const isDark = theme === 'dark';
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
+  const st = SPECTRUM_TEXT[language] || SPECTRUM_TEXT.en;
+  const a = ANALYSIS_TEXT[language] || ANALYSIS_TEXT.en;
+  const spectrum = spectralRows(spectralData,lineProfile,wavelengthCalibration,requestedSpectralMode,pixelsPerMeter);
+  const spectralMode = spectrum.mode;
+  const calibratedSpectrum = validCalibration(wavelengthCalibration,lineProfile);
+  function downloadSpectrum() {
+    const url=URL.createObjectURL(new Blob([spectrumCSV(spectrum.rows,spectrum.mode)],{type:'text/csv;charset=utf-8'}));
+    const link=document.createElement('a');link.href=url;link.download='spectrum.csv';
+    document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+  }
+
 
   const styles = {
     bg: isDark ? 'bg-slate-900' : 'bg-slate-50',
@@ -94,18 +111,24 @@ export default function AnalysisPanel({
     panelBorder: isDark ? 'border-slate-700' : 'border-slate-200',
     input: isDark ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900',
     buttonSecondary: isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200',
-    chartGrid: isDark ? "#475569" : "#e2e8f0",
-    chartAxis: isDark ? "#94a3b8" : "#64748b",
+    chartGrid: isDark ? "#334155" : "#e2e8f0",
+    chartAxis: isDark ? "#cbd5e1" : "#475569",
     chartTooltip: isDark ? { backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' } : { backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a' }
   };
 
-  const labels = { 
+  const baseLabels = {
     'time': t.time, 
     'x': t.xPos, 
     'y': t.yPos, 
     'vx': t.xVel, 
     'vy': t.yVel 
   };
+  const labels=Object.fromEntries(Object.entries(baseLabels).map(([key,label])=>
+    [key,`${label.replace(/\s*\([^)]*\)\s*$/, '')} (${axisUnit(key,!!pixelsPerMeter)})`]));
+  const fitUnits=fitEquation?parameterUnits(fitEquation.type,plotX,plotY,!!pixelsPerMeter):{};
+  const parameters=fitEquation?.type==='Linear'?[['m',t.slope],['b',t.intercept]]:
+    fitEquation?.type==='Quadratic'?[['A',t.aTerm],['B',t.bTerm],['C',t.cTerm]]:
+    [['A',t.amplitude],['B',a.angularFrequency],['C',t.phase],['D',t.offset]];
 
   const exportScientificGraph = () => {
     const svgElement = document.querySelector("#motion-chart .recharts-surface");
@@ -115,6 +138,7 @@ export default function AnalysisPanel({
     }
 
     const svgClone = svgElement.cloneNode(true);
+    svgClone.querySelectorAll('[data-hover-only]').forEach(element=>element.remove());
     
     const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     bgRect.setAttribute("width", "100%");
@@ -188,7 +212,8 @@ export default function AnalysisPanel({
     });
 
     const lines = svgClone.querySelectorAll(".recharts-line-curve");
-    lines.forEach(l => { 
+    lines.forEach(l => {
+        if (analysisChartMode === 'spectroscopy') return;
         l.setAttribute("stroke", "red"); 
         l.setAttribute("stroke-dasharray", "5,3"); 
         l.setAttribute("stroke-width", "2");
@@ -238,12 +263,12 @@ export default function AnalysisPanel({
         ctx.font = "bold 36px Arial"; 
         ctx.fillStyle = "black";
         ctx.textAlign = "center";
-        const titleText = `${modelName} of ${labels[plotY].split('(')[0].trim()} vs ${labels[plotX].split('(')[0].trim()}`;
+        const titleText = analysisChartMode === 'spectroscopy' ? st.title : `${modelName} of ${labels[plotY].split('(')[0].trim()} vs ${labels[plotX].split('(')[0].trim()}`;
         ctx.fillText(titleText, canvas.width / 2, 55);
 
         ctx.drawImage(img, leftMargin, topMargin);
 
-        if (fitEquation && legendPosition !== 'none') {
+        if (analysisChartMode !== 'spectroscopy' && fitEquation && legendPosition !== 'none') {
             const padding = 20;
             const boxW = 480; 
             const boxH = 150; 
@@ -318,8 +343,8 @@ export default function AnalysisPanel({
   };
 
   return (
-    <div className={`flex flex-1 overflow-hidden ${styles.bg} ${viewMode === 'analysis' ? '' : 'hidden'}`}>
-        <div className="flex-1 p-6 flex flex-col">
+    <div className={`analysis-workspace flex flex-1 min-w-0 overflow-hidden ${styles.bg} ${viewMode === 'analysis' ? '' : 'hidden'}`}>
+        <div className="analysis-plot flex-1 min-w-0 p-3 lg:p-6 flex flex-col">
           <div id="motion-chart" className={`rounded-xl border flex-1 flex flex-col overflow-hidden shadow-2xl ${styles.panel}`}>
              <div className={`p-4 border-b flex flex-wrap gap-4 items-center ${styles.panelBgOnly} ${styles.panelBorder}`}>
                 
@@ -334,7 +359,7 @@ export default function AnalysisPanel({
                   {lineProfile && (
                     <button 
                       onClick={() => setAnalysisChartMode('spectroscopy')} 
-                      className={`px-3 py-1 text-xs rounded transition font-semibold ${analysisChartMode === 'spectroscopy' ? (isDark ? 'bg-slate-700 text-lime-400 shadow-sm' : 'bg-white shadow-sm text-lime-600') : styles.textSecondary + ' hover:' + styles.text}`}
+                      className={`px-3 py-1 text-xs rounded transition font-semibold ${analysisChartMode === 'spectroscopy' ? (isDark ? 'bg-cyan-500/15 text-cyan-300 shadow-sm' : 'bg-cyan-50 shadow-sm text-cyan-800') : styles.textSecondary + ' hover:' + styles.text}`}
                     >
                       {t.trackerMode === 'Rastreador' ? 'Perfil Espectral' : 'Spectral Profile'}
                     </button>
@@ -345,48 +370,53 @@ export default function AnalysisPanel({
 
                 {analysisChartMode === 'kinematics' ? (
                   <>
+                    <fieldset className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-500/30 px-3 pb-2">
+                    <legend className={`px-1 text-xs font-semibold ${styles.textSecondary}`}>{a.axes}</legend>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.yAxis}</span>
-                      <select value={plotY} onChange={(e) => setPlotY(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
-                        <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option> <option value="time">{t.time}</option>
+                      <label htmlFor="analysis-y" className={`text-xs font-bold ${styles.textSecondary}`}>{t.yAxis}</label>
+                      <select id="analysis-y" value={plotY} onChange={(e) => setPlotY(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}>
+                        <option value="x">{labels.x}</option> <option value="y">{labels.y}</option> <option value="vx">{labels.vx}</option> <option value="vy">{labels.vy}</option> <option value="time">{labels.time}</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.xAxis}</span>
-                      <select value={plotX} onChange={(e) => setPlotX(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}>
-                         <option value="time">{t.time}</option> <option value="x">{t.xPos}</option> <option value="y">{t.yPos}</option> <option value="vx">{t.xVel}</option> <option value="vy">{t.yVel}</option>
+                      <label htmlFor="analysis-x" className={`text-xs font-bold ${styles.textSecondary}`}>{t.xAxis}</label>
+                      <select id="analysis-x" value={plotX} onChange={(e) => setPlotX(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}>
+                         <option value="time">{labels.time}</option> <option value="x">{labels.x}</option> <option value="y">{labels.y}</option> <option value="vx">{labels.vx}</option> <option value="vy">{labels.vy}</option>
                       </select>
                     </div>
+                    </fieldset>
                     
                     <div className="flex-1"></div>
                     
                     {/* DATA RANGE CROPPER */}
-                    <div className={`flex items-center gap-2 pl-4 border-l ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
-                      <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.dataRange} (s):</span>
+                    <fieldset className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-500/30 px-3 pb-2">
+                      <legend className={`px-1 text-xs font-semibold ${styles.textSecondary}`}>{a.range} (s)</legend>
                       <input 
+                          aria-label={a.rangeStart}
                           type="number" 
                           step="0.1" 
                           value={cropStart} 
                           onChange={(e) => setCropStart(e.target.value)} 
                           placeholder={t.start} 
-                          className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`} 
+                          className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}
                       />
                       <span className={styles.textSecondary}>-</span>
                       <input 
+                          aria-label={a.rangeEnd}
                           type="number" 
                           step="0.1" 
                           value={cropEnd} 
                           onChange={(e) => setCropEnd(e.target.value)} 
                           placeholder={t.end} 
-                          className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`} 
+                          className={`w-20 border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}
                       />
                       <button 
                           onClick={() => { setCropStart(''); setCropEnd(''); }} 
                           className={`px-3 py-1.5 text-xs rounded transition font-semibold ${styles.buttonSecondary}`}
                       >
-                          {t.reset}
+                          {a.showAll}
                       </button>
-                    </div>
+                    </fieldset>
                   </>
                 ) : (
                   <>
@@ -395,19 +425,20 @@ export default function AnalysisPanel({
                       <select 
                         value={spectralMode} 
                         onChange={(e) => setSpectralMode(e.target.value)}
-                        className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}
+                        className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}
                       >
                         <option value="pixels">{t.pixelUnit}</option>
                         {pixelsPerMeter && <option value="distance">{t.meterUnit}</option>}
-                        {wavelengthCalibration && <option value="wavelength">{t.wavelengthUnit}</option>}
+                        {calibratedSpectrum && <option value="wavelength">{t.wavelengthUnit}</option>}
                       </select>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-xs uppercase font-bold tracking-wider ${styles.textSecondary}`}>{t.channelLabel}</span>
                       <select 
+                        disabled={!lineProfile}
                         value={lineProfile?.channel || 'luma'} 
-                        onChange={(e) => setLineProfile({ ...lineProfile, channel: e.target.value })}
-                        className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 ${styles.input}`}
+                        onChange={(e) => {const channel=e.target.value;setLineProfile(current=>current?{...current,channel}:current);}}
+                        className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}
                       >
                         <option value="luma">{t.lumaChannel}</option>
                         <option value="red">{t.redChannel}</option>
@@ -416,9 +447,10 @@ export default function AnalysisPanel({
                       </select>
                     </div>
                     <div className="flex-1"></div>
-                    {wavelengthCalibration && (
+                    {calibratedSpectrum && (
                       <div className={`text-xs font-mono font-bold px-3 py-1.5 rounded border border-lime-500/20 bg-lime-500/10 text-lime-400 animate-in fade-in`}>
-                        {wavelengthCalibration.p1_wl} nm ({Math.round((wavelengthCalibration.p1_t ?? 0.0) * 100)}%) ↔ {wavelengthCalibration.p2_wl} nm ({Math.round((wavelengthCalibration.p2_t ?? 1.0) * 100)}%)
+                        {wavelengthCalibration.p1_wl} nm ↔ {wavelengthCalibration.p2_wl} nm
+
                       </div>
                     )}
                   </>
@@ -429,64 +461,16 @@ export default function AnalysisPanel({
              <div className="flex-1 p-4 relative">
                 {analysisChartMode === 'kinematics' ? (
                   <>
-                    <ResponsiveContainer width="100%" height="100%"> 
-                       <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 50, bottom: 50 }}> 
-                         <CartesianGrid strokeDasharray="3 3" stroke={styles.chartGrid} /> 
-                         <XAxis 
-                           dataKey={plotX} 
-                           type="number" 
-                           stroke={styles.chartAxis} 
-                           fontSize={16} 
-                           domain={[xScale.min, xScale.max]}
-                           ticks={xScale.ticks}
-                           tickFormatter={getTickFormatter(xScale.step)} 
-                           label={{ value: labels[plotX], position: 'bottom', offset: 20, fill: styles.chartAxis, fontSize: 18 }} 
-                         /> 
-                         <YAxis 
-                           stroke={styles.chartAxis} 
-                           fontSize={16} 
-                           domain={[yScale.min, yScale.max]}
-                           ticks={yScale.ticks}
-                           tickFormatter={getTickFormatter(yScale.step)} 
-                           label={{ value: labels[plotY], angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 18 }} 
-                         /> 
-                         <Tooltip contentStyle={styles.chartTooltip} formatter={(val) => (typeof val === 'number') ? val.toFixed(3) : val} labelFormatter={(val) => `${labels[plotX]}: ${val}`} /> 
-                         <Scatter name={`${t.dataPoints} (${activeObjId === 'COM' ? t.comShort : activeObjId})`} dataKey={plotY} fill={activeObjectColor} />
-                         {fitEquation && <Line type="linear" dataKey="fitYContinuous" name={t.curveFit} stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={false} />}
-                         {['x', 'y'].includes(plotY) && ( <Scatter dataKey={plotY} fill="none" stroke="none"> <ErrorBar dataKey="error" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" /> </Scatter> )}
-                       </ComposedChart> 
-                    </ResponsiveContainer>
-                    {points.length < 2 && ( <div className={`absolute inset-0 flex items-center justify-center italic ${styles.textSecondary}`}> Add points in Tracker mode to see data. </div> )}
+                    <MotionChart data={chartData} plotX={plotX} plotY={plotY} xScale={xScale} yScale={yScale}
+                      labels={labels} styles={styles} formatTicks={getTickFormatter} fitEquation={fitEquation}
+                      color={activeObjectColor} objectLabel={activeObjId==='COM'?t.comShort:`${a.object} ${activeObjId}`} dark={isDark} />
+                    {points.length === 0 && ( <div className={`absolute inset-0 pointer-events-none flex items-center justify-center italic ${styles.textSecondary}`}> {a.empty} </div> )}
                   </>
                 ) : (
                   <>
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart 
-                        data={spectralData.map(p => {
-                          let xVal = p.distance;
-                          if (spectralMode === 'distance' && pixelsPerMeter) {
-                            xVal = p.distance / pixelsPerMeter;
-                          } else if (spectralMode === 'wavelength' && wavelengthCalibration && spectralData.length > 1) {
-                            const maxIdx = spectralData.length - 1;
-                            const t1 = wavelengthCalibration.p1_t !== undefined ? wavelengthCalibration.p1_t : 0.0;
-                            const t2 = wavelengthCalibration.p2_t !== undefined ? wavelengthCalibration.p2_t : 1.0;
-                            const wl1 = wavelengthCalibration.p1_wl || 400;
-                            const wl2 = wavelengthCalibration.p2_wl || 700;
-                            
-                            let calculatedWl;
-                            if (Math.abs(t2 - t1) > 0.0001) {
-                              const t_curr = p.index / maxIdx;
-                              calculatedWl = wl1 + ((t_curr - t1) / (t2 - t1)) * (wl2 - wl1);
-                            } else {
-                              calculatedWl = wl1;
-                            }
-                            xVal = calculatedWl;
-                          }
-                          return {
-                            ...p,
-                            xVal: parseFloat(xVal.toFixed(3))
-                          };
-                        })} 
+                        data={spectrum.rows}
                         margin={{ top: 20, right: 30, left: 50, bottom: 50 }}
                       >
                         <defs>
@@ -515,9 +499,9 @@ export default function AnalysisPanel({
                           fontSize={14} 
                           domain={[0, 255]}
                           ticks={[0, 50, 100, 150, 200, 255]}
-                          label={{ value: t.spectralIntensity, angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 16 }} 
+                          label={{ value: st.intensity, angle: -90, position: 'insideLeft', offset: -40, fill: styles.chartAxis, fontSize: 16 }}
                         />
-                        <Tooltip 
+                        <Tooltip isAnimationActive={false}
                           contentStyle={styles.chartTooltip} 
                           formatter={(val, name) => {
                             if (name === 'intensity') return [val, t.channelLabel];
@@ -526,7 +510,7 @@ export default function AnalysisPanel({
                           labelFormatter={(val) => `${spectralMode === 'distance' ? `${t.spectralDistance} (m)` : spectralMode === 'wavelength' ? `${t.wavelengthUnit} (nm)` : `${t.spectralDistance} (px)`}: ${val}`} 
                         />
                         <Line 
-                          type="monotone" 
+                          type="linear"
                           dataKey="intensity" 
                           stroke="#84cc16" 
                           strokeWidth={3} 
@@ -535,9 +519,9 @@ export default function AnalysisPanel({
                         />
                         {lineProfile?.channel === 'luma' && (
                           <>
-                            <Line type="monotone" dataKey="r" stroke="#ef4444" strokeWidth={1} dot={false} strokeOpacity={0.3} />
-                            <Line type="monotone" dataKey="g" stroke="#22c55e" strokeWidth={1} dot={false} strokeOpacity={0.3} />
-                            <Line type="monotone" dataKey="b" stroke="#3b82f6" strokeWidth={1} dot={false} strokeOpacity={0.3} />
+                            <Line type="linear" dataKey="r" stroke="#ef4444" strokeWidth={1} dot={false} strokeOpacity={0.3} />
+                            <Line type="linear" dataKey="g" stroke="#22c55e" strokeWidth={1} dot={false} strokeOpacity={0.3} />
+                            <Line type="linear" dataKey="b" stroke="#3b82f6" strokeWidth={1} dot={false} strokeOpacity={0.3} />
                           </>
                         )}
                         {spectralMode === 'wavelength' && REFERENCE_EMISSION_LINES.map((line, idx) => {
@@ -546,37 +530,40 @@ export default function AnalysisPanel({
                             <ReferenceLine
                               key={idx}
                               x={line.wl}
+                              ifOverflow="discard"
                               stroke={line.color}
                               strokeWidth={2}
                               strokeDasharray="4 4"
                               label={{
                                 value: line.label,
-                                position: 'top',
+                                position: 'insideTopRight',
+                                angle: -90,
                                 fill: line.color,
                                 fontSize: 10,
                                 fontWeight: 'bold',
-                                dy: -10
+                                dx: -10,
+                                dy: 55
                               }}
                             />
                           );
                         })}
                       </ComposedChart>
                     </ResponsiveContainer>
-                    {spectralData.length === 0 && ( <div className={`absolute inset-0 flex items-center justify-center italic ${styles.textSecondary}`}> Activate Line Profile and upload video to see spectral analysis. </div> )}
+                    {spectralData.length === 0 && ( <div className={`absolute inset-0 flex items-center justify-center italic ${styles.textSecondary}`}> {st.noData} </div> )}
                   </>
                 )}
               </div>
           </div>
         </div>
 
-        <div className={`w-96 border-l flex flex-col p-6 gap-6 shrink-0 ${styles.panel}`}>
+        <div className={`analysis-tools w-80 xl:w-96 overflow-y-auto border-l flex flex-col p-4 gap-6 shrink-0 ${styles.panel}`}>
            {analysisChartMode === 'kinematics' ? (
              <>
                <div>
-                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> {t.curveFitting} ({activeObjId === 'COM' ? t.comShort : activeObjId})</h3>
+                 <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${styles.text}`}><Calculator /> {a.fit} ({activeObjId === 'COM' ? t.comShort : activeObjId})</h3>
                  <div className="flex flex-col gap-2">
-                    <label className={`text-sm ${styles.textSecondary}`}>{t.modelType}</label>
-                    <select value={fitModel} onChange={(e) => setFitModel(e.target.value)} className={`border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${styles.input}`}>
+                    <label htmlFor="analysis-fit" className={`text-sm ${styles.textSecondary}`}>{t.modelType}</label>
+                    <select id="analysis-fit" value={fitModel} onChange={(e) => setFitModel(e.target.value)} className={`border rounded px-3 py-2 focus:outline-none focus:border-cyan-600 ${styles.input}`}>
                       <option value="none">{t.none}</option>
                       <option value="linear">{t.linear}</option>
                       <option value="quadratic">{t.quadratic}</option>
@@ -584,35 +571,23 @@ export default function AnalysisPanel({
                     </select>
                  </div>
                </div>
+               {fitModel!=='none' && fitModel!=='sinusoidal' && !fitEquation && <p role="status" className={`text-sm ${styles.textSecondary}`}>{a.unavailable}</p>}
                {fitModel === 'sinusoidal' && (!fitEquation || fitEquation.warning) && (
                  <p role="status" className={`text-sm ${styles.textSecondary}`}>
                    {fitEquation ? t[fitEquation.warning] : t.fitUnavailable}
                  </p>
                )}
                {fitEquation && (
-                 <div className={`rounded-xl border p-4 animate-in fade-in slide-in-from-right-4 ${isDark ? 'bg-slate-900/50 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
-                   <div className={`font-mono font-bold text-sm mb-4 pb-2 border-b ${isDark ? 'text-orange-400 border-slate-700' : 'text-orange-600 border-slate-200'}`}> {fitEquation.text} </div>
+                 <div className={`rounded-xl border p-4 ${isDark ? 'bg-slate-900/50 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
+                   <div className={`font-mono font-bold text-sm break-words mb-4 pb-2 border-b ${isDark ? 'text-cyan-300 border-slate-700' : 'text-cyan-800 border-slate-200'}`}> {fitEquation.text} </div>
                    <div className="space-y-3">
-                      {fitEquation.type === 'Linear' ? (
-                        <>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.slope}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.m.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.intercept}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.b.toFixed(4)}</span></div>
-                        </>
-                      ) : fitEquation.type === 'Quadratic' ? (
-                        <>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.aTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.bTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.cTerm}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
-                        </>
-                      ) : (
-                         <>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.amplitude}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.A.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.frequency}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.B.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.phase}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.C.toFixed(4)}</span></div>
-                          <div className="flex justify-between items-center"><span className={styles.textSecondary}>{t.offset}</span> <span className={`font-mono text-lg ${styles.text}`}>{fitEquation.params.D.toFixed(4)}</span></div>
-                         </>
-                      )}
-                      
+                      {parameters.map(([key,label])=><div key={key} className="flex justify-between items-baseline gap-3">
+                        <span className={styles.textSecondary}>{label}</span>
+                        <span className={`text-right font-mono tabular-nums ${styles.text}`}>
+                          {Math.abs(fitEquation.params[key])>0 && Math.abs(fitEquation.params[key])<.0001?fitEquation.params[key].toExponential(3):fitEquation.params[key].toFixed(4)}
+                          {fitUnits[key] && <span className="ml-1 text-xs">{fitUnits[key]}</span>}
+                        </span>
+                      </div>)}
                       <div className="flex justify-between items-center pt-2 border-t border-slate-700/50">
                         <span className={styles.textSecondary}>R²</span> 
                         <span className={`font-mono text-lg ${styles.text}`}>{Number.isFinite(fitEquation.r2) ? fitEquation.r2.toFixed(4) : "N/A"}</span>
@@ -620,14 +595,31 @@ export default function AnalysisPanel({
                    </div>
                  </div>
                )}
+               {fitEquation && <section className={`border-t pt-4 text-sm leading-relaxed ${styles.panelBorder}`}>
+                 <h4 className="font-semibold mb-2">{a.interpretation}</h4>
+                 <p>{a[interpretationKey(fitEquation.type,plotX,plotY)]}</p>
+                 <details className="mt-3">
+                   <summary className="cursor-pointer py-2 font-medium">{a.moreHelp}</summary>
+                   <p className={`mb-2 ${styles.textSecondary}`}>{a.fitHelp}</p>
+                   <p className={styles.textSecondary}>{a.r2Help}</p>
+                 </details>
+               </section>}
              </>
            ) : (
              <>
+               <button type="button" className={`min-h-11 rounded-lg border px-3 text-sm mb-4 ${styles.buttonSecondary}`} onClick={()=>{
+                 const store=useStore.getState();
+                 store.setSpectrumStep('calibrate');
+                 if(store.imageSrc)store.selectImageTask('spectrum');
+                 else store.navigateSidebar('tools','spectroscopy');
+                 store.setViewMode('tracker');
+               }}>{(SPECTRUM_WORKFLOW_TEXT[language] || SPECTRUM_WORKFLOW_TEXT.en).edit}</button>
                <div>
-                 <h3 className={`text-lg font-bold mb-3 flex items-center gap-2 ${styles.text}`}><Info size={18} className="text-lime-500" /> {t.language === 'es' ? 'Líneas de Emisión' : 'Emission Line Guides'}</h3>
+                 <h3 className={`text-lg font-bold mb-3 flex items-center gap-2 ${styles.text}`}><Info size={18} className="text-lime-500" /> {(SPECTRUM_WORKFLOW_TEXT[language] || SPECTRUM_WORKFLOW_TEXT.en).compare}</h3>
                  <p className={`text-xs ${styles.textSecondary} mb-4 leading-normal`}>
-                   {t.language === 'es' ? 'Use estas referencias de longitud de onda para identificar elementos químicos en picos espectrales:' : 'Use these standard optical emission peaks as references when identifying elements in your spectral graph:'}
+                   {language === 'es' ? 'Use estas referencias de longitud de onda para identificar elementos químicos en picos espectrales:' : 'Use these standard optical emission peaks as references when identifying elements in your spectral graph:'}
                  </p>
+                 <p role="status" className={`text-xs mb-3 ${styles.textSecondary}`}>{!calibratedSpectrum ? st.comparisonCalibration : spectralMode !== 'wavelength' ? st.comparisonWavelength : st.comparisonHelp}</p>
                  <div className="space-y-3.5">
                    {/* Element: Hydrogen */}
                    <div className={`rounded-xl p-3 border transition-colors ${activeReferenceOverlays.h2 ? (isDark ? 'bg-red-950/20 border-red-500/30' : 'bg-red-50/50 border-red-200') : (isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200')}`}>
@@ -635,6 +627,7 @@ export default function AnalysisPanel({
                         <label className="flex items-center gap-2 text-xs font-bold text-red-500 cursor-pointer select-none">
                           <input 
                             type="checkbox" 
+                            disabled={!calibratedSpectrum || spectralMode !== 'wavelength'}
                             checked={activeReferenceOverlays.h2} 
                             onChange={(e) => setActiveReferenceOverlays({ ...activeReferenceOverlays, h2: e.target.checked })}
                             className={`rounded text-red-600 focus:ring-red-500 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}
@@ -657,6 +650,7 @@ export default function AnalysisPanel({
                         <label className="flex items-center gap-2 text-xs font-bold text-yellow-500 cursor-pointer select-none">
                           <input 
                             type="checkbox" 
+                            disabled={!calibratedSpectrum || spectralMode !== 'wavelength'}
                             checked={activeReferenceOverlays.he} 
                             onChange={(e) => setActiveReferenceOverlays({ ...activeReferenceOverlays, he: e.target.checked })}
                             className={`rounded text-yellow-600 focus:ring-yellow-500 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}
@@ -679,6 +673,7 @@ export default function AnalysisPanel({
                         <label className="flex items-center gap-2 text-xs font-bold text-purple-500 cursor-pointer select-none">
                           <input 
                             type="checkbox" 
+                            disabled={!calibratedSpectrum || spectralMode !== 'wavelength'}
                             checked={activeReferenceOverlays.hg} 
                             onChange={(e) => setActiveReferenceOverlays({ ...activeReferenceOverlays, hg: e.target.checked })}
                             className={`rounded text-purple-600 focus:ring-purple-500 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-300 bg-white'}`}
@@ -700,16 +695,19 @@ export default function AnalysisPanel({
            )}
 
            {/* EXPORT BUTTONS */}
-           <div className="flex flex-col gap-2 mt-4">
+           <div className={`flex flex-col gap-2 mt-4 border-t pt-4 ${styles.panelBorder}`}>
+              <details>
+              <summary className="cursor-pointer py-2 text-sm font-semibold">{a.appearance}</summary>
               
               {/* Legend Position Control */}
-              <label className={`text-xs uppercase font-bold tracking-wider mb-1 ${styles.textSecondary} flex items-center gap-2`}>
+              <label htmlFor="analysis-legend" className={`text-xs uppercase font-bold tracking-wider mb-1 ${styles.textSecondary} flex items-center gap-2`}>
                 <LayoutTemplate size={14} /> {t.legendPos}
               </label>
               <select 
+                id="analysis-legend"
                 value={legendPosition} 
                 onChange={(e) => setLegendPosition(e.target.value)} 
-                className={`border rounded px-3 py-2 text-sm mb-2 focus:outline-none focus:border-blue-500 ${styles.input}`}
+                className={`border rounded px-3 py-2 text-sm mb-2 focus:outline-none focus:border-cyan-600 ${styles.input}`}
               >
                 <option value="top-left">{t.topLeft}</option>
                 <option value="top-right">{t.topRight}</option>
@@ -717,12 +715,14 @@ export default function AnalysisPanel({
                 <option value="bottom-right">{t.bottomRight}</option>
                 <option value="none">{t.hide}</option>
               </select>
+              </details>
+              <h4 className="mt-3 mb-1 text-sm font-semibold">{a.export}</h4>
 
               <button onClick={exportScientificGraph} className={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm`}>
                 <Camera size={18} /> {t.exportGraph}
               </button>
-              <button onClick={downloadCSV} className={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border ${styles.buttonSecondary}`}>
-                <Download size={18} /> {t.exportData}
+              <button onClick={analysisChartMode === 'spectroscopy' ? downloadSpectrum : downloadCSV} className={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border ${styles.buttonSecondary}`}>
+                <Download size={18} /> {analysisChartMode === 'spectroscopy' ? (SPECTRUM_WORKFLOW_TEXT[language] || SPECTRUM_WORKFLOW_TEXT.en).export : t.exportData}
               </button>
            </div>
 

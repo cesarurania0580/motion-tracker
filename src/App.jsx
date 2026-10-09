@@ -1,3 +1,4 @@
+import {restoredImageTask} from './utils/imageWorkspace';
 /* eslint-disable */
 /* eslint-enable no-undef */
 /**
@@ -9,7 +10,10 @@
  * * Copyright (c) 2026 Cesar Cortes
  */
 
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react';
+import WelcomeDialog from './components/WelcomeDialog';
+import FpsDialog from './components/FpsDialog';
+import {startTimingDetection} from './utils/timingDetection';
 import { Activity, X, Github, Mail, Coffee } from 'lucide-react';
 
 // --- UTILS & CORE DICTIONARIES ---
@@ -20,15 +24,26 @@ import { useStore } from './store/useStore';
 
 // --- SUB-COMPONENTS ---
 import Header from './components/Header';
+import {GUIDE_TEXT} from './utils/guideText';
 import Sidebar from './components/Sidebar';
 import AnalysisPanel from './components/AnalysisPanel';
 import VideoCanvas from './components/VideoCanvas';
 import {useAutotracking} from './hooks/useAutotracking';
+import {usePointReview} from './hooks/usePointReview';
 
 
 export default function App() {
+  const [projectError,setProjectError]=useState(null);
+  const [timing,setTiming]=useState({status:'unknown',fps:null});
+  const [savedTiming,setSavedTiming]=useState(null);
+  const cancelTiming=useRef(()=>{});
+  const fpsConfirmed=useStore(state=>state.fpsConfirmed);
+  useEffect(()=>()=>cancelTiming.current(),[]);
+  const mediaDuration=useStore(state=>state.duration);
+  const mediaError=useStore(state=>state.error);
   const videoRef = useRef(null);
   const autotracking = useAutotracking(videoRef);
+  const pointReview = usePointReview(videoRef, autotracking);
   // --- ZUSTAND STATE MANAGEMENT ---
   const language = useStore(state => state.language);
   const setLanguage = useStore(state => state.setLanguage);
@@ -180,7 +195,15 @@ export default function App() {
     }
   }, [setActiveObjId]);
 
+  const guideText = GUIDE_TEXT[language] || GUIDE_TEXT.en;
+  const handleOriginButtonClick = () => {
+    if (!videoSrc && !imageSrc) return;
+    if (!origin && videoDims.w > 0) setOrigin({ x: videoDims.w / 2, y: videoDims.h / 2 });
+    useStore.setState({ isSettingOrigin: true, isCalibrating: false, isTracking: false, showInputModal: false, activeClickTarget: null });
+  };
+
   const handleScaleButtonClick = () => {
+    if (!videoSrc && !imageSrc) return;
     if (pixelsPerMeter) {
       setIsScaleVisible(!isScaleVisible);
     } else {
@@ -252,6 +275,12 @@ export default function App() {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target.result);
+        if (!data || (!Array.isArray(data.objects) && !Array.isArray(data.points))) throw new Error('Invalid project');
+        const pointLists = Array.isArray(data.objects) ? data.objects.map(o => o.points) : [data.points];
+        if (!pointLists.every(list => Array.isArray(list) && list.every(p => p && ['x','y','time'].every(k => Number.isFinite(p[k]))))) throw new Error('Invalid measurements');
+        cancelTiming.current();
+        setTiming({status:'unknown',fps:null});
+        useStore.setState({isTracking:false,isCalibrating:false,isSettingOrigin:false,showInputModal:false,activeClickTarget:null,error:null,spectralData:[],videoDims:{w:0,h:0},fpsConfirmed:false});
         
         if (data.objects) {
           const migratedObjects = data.objects.map(o => ({ ...o, mass: o.mass !== undefined ? o.mass : 1 }));
@@ -268,11 +297,13 @@ export default function App() {
         setCalibrationPoints(data.calibrationPoints || []);
         setPixelsPerMeter(data.pixelsPerMeter || null);
         setOrigin(data.origin || null);
+        useStore.setState({axesConfirmed:!!data.origin});
         setOriginAngle(data.originAngle || 0);
         setZeroTime(data.zeroTime !== undefined ? data.zeroTime : true);
         setFitModel(data.fitModel || 'none');
         setUncertaintyPx(data.uncertaintyPx || 10);
         setHasRestoredData(true);
+        useStore.setState({imageTask:hasRestoredData?restoredImageTask(useStore.getState()):null});
         setVideoSrc(null); 
         setImageSrc(null);
         setImageObj(null);
@@ -291,17 +322,20 @@ export default function App() {
         setActiveReferenceOverlays(data.activeReferenceOverlays || { h2: false, he: false, hg: false });
         setShowGuidelines(data.showGuidelines !== undefined ? data.showGuidelines : true);
         
-        alert("Project loaded successfully. Please upload the corresponding video or image file.");
+        setIsPlaying(false);
+        setViewMode('tracker');
+        setProjectError(null);
       } catch (err) {
-        alert("Invalid Project File");
+        setProjectError(guideText.invalid);
       }
     };
+    reader.onerror = () => setProjectError(guideText.invalid);
     reader.readAsText(file);
     e.target.value = null;
   };
 
   const clearProject = () => {
-    if (confirm("Are you sure? This will delete all data and reset the app.")) {
+    if (confirm(guideText.reset)) {
       if (typeof window !== 'undefined') {
         window.isResetting = true;
       }
@@ -311,11 +345,19 @@ export default function App() {
   };
 
   const handleFileUpload = (event) => {
+    const hasRestoredData=useStore.getState().hasRestoredData;
     const file = event.target.files[0];
     if (file) {
+      cancelTiming.current();
+      const preservedFps=hasRestoredData ? fps : null;
+      setSavedTiming(preservedFps);
+      setTiming({status:file.type.startsWith('image/')?'unknown':'checking',fps:null});
       if (videoSrc) URL.revokeObjectURL(videoSrc);
       if (imageSrc) URL.revokeObjectURL(imageSrc);
       const url = URL.createObjectURL(file);
+      useStore.setState({isCalibrating: false, isSettingOrigin: false, activeClickTarget: null});
+      setImageObj(null);
+      setVideoDims({ w: 0, h: 0 });
       
       if (!hasRestoredData) {
           setObjects([
@@ -325,8 +367,10 @@ export default function App() {
           setCalibrationPoints([]);
           setPixelsPerMeter(null);
           setOrigin(null);
+          useStore.setState({axesConfirmed:false});
           setOriginAngle(0);
           setFitModel('none');
+          useStore.setState({lineProfile: null, spectralData: [], wavelengthCalibration: null, protractor: null, tapeMeasure: null, analysisChartMode: 'kinematics'});
           setVideoDims({ w: 0, h: 0 });
       } else {
           setHasRestoredData(false);
@@ -338,36 +382,42 @@ export default function App() {
       setIsScaleVisible(true);
       setDragState(null);
       setZoom(1.0);
-      setZeroTime(true); 
+      if (!hasRestoredData) setZeroTime(true);
       useStore.getState().setIsTracking(false);
       setReticlePos(null);
-      setUncertaintyPx(10);
+      if (!hasRestoredData) setUncertaintyPx(10);
       setDuration(0);
       setCurrentTime(0);
       setCurrentFrameIndex(0);
       setViewMode('tracker');
-      setCropStart('');
-      setCropEnd('');
+      if (!hasRestoredData) {setCropStart('');setCropEnd('');}
       if (activeObjId === 'COM') setActiveObjId('A');
 
       if (file.type.startsWith('image/')) {
+        useStore.setState({imageTask:hasRestoredData?restoredImageTask(useStore.getState()):null});
         setVideoSrc(null);
         setImageSrc(url);
         
         const imgObj = new Image();
-        imgObj.src = url;
         imgObj.onload = () => {
+          if (useStore.getState().imageSrc !== url) return;
           setImageObj(imgObj);
           setVideoDims({ w: imgObj.width, h: imgObj.height });
           setDuration(0.033);
         };
         imgObj.onerror = () => {
-          setError("Error loading image.");
+          if (useStore.getState().imageSrc !== url) return;
+          setError(guideText.imageError);
         };
+        imgObj.src = url;
       } else {
         setImageSrc(null);
         setImageObj(null);
         setVideoSrc(url);
+        useStore.getState().setFpsConfirmed(false);
+        cancelTiming.current=startTimingDetection(file,result=>{
+          if(useStore.getState().videoSrc===url)setTiming(result);
+        });
       }
     }
   };
@@ -385,11 +435,12 @@ export default function App() {
 
   // Calculate Base Physics Data
   const { positionData, velocityData } = useMemo(() => {
-    const sortedPoints = points.sort((a, b) => a.time - b.time);
+    const sortedPoints = points.map((point,sourceIndex)=>({...point,sourceIndex})).sort((a, b) => a.time - b.time);
     const posData = sortedPoints.map((p) => {
         const { x: rx, y: ry } = getRotatedCoords(p.x, p.y);
         const adjustedTime = zeroTime ? (p.time - startTime) : p.time;
         return {
+          sourceIndex: p.sourceIndex,
           time: adjustedTime,
           x: formatVal(rx),
           y: formatVal(ry),
@@ -557,12 +608,17 @@ export default function App() {
     document.body.removeChild(link);
   };
 
+  const mediaLoading=!!(videoSrc || imageSrc) && !(imageObj || (videoSrc && mediaDuration>0));
+  const welcomeOpen=(!videoSrc && !imageSrc) || mediaLoading || !!projectError || !!mediaError;
+  const timingOpen=!!videoSrc && !welcomeOpen && !fpsConfirmed;
   return (
-    <div className={`flex flex-col h-screen font-sans transition-colors duration-200 ${styles.bg} ${styles.text}`}>
+    <>
+    <div inert={welcomeOpen || timingOpen} aria-hidden={welcomeOpen || timingOpen || undefined} className={`app-shell flex flex-col h-screen font-sans transition-colors duration-200 ${styles.bg} ${styles.text}`}>
       {/* HEADER WITH VIEW SWITCHER */}
       <Header
         autotracking={autotracking}
         handleObjectSwitch={handleObjectSwitch}
+        handleOriginButtonClick={handleOriginButtonClick}
         handleScaleButtonClick={handleScaleButtonClick}
         handleFileUpload={handleFileUpload}
         saveProject={saveProject}
@@ -570,12 +626,13 @@ export default function App() {
         clearProject={clearProject}
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="workspace-body flex flex-1 min-h-0 overflow-hidden">
         {/* VIEW 1: TRACKER MODE */}
-        <div className={`flex-1 flex overflow-hidden ${viewMode === 'tracker' ? '' : 'hidden'}`}>
-            <VideoCanvas points={points} videoRef={videoRef} autotracking={autotracking} />
+        <div className={`tracker-workspace flex-1 flex min-w-0 overflow-hidden ${viewMode === 'tracker' || (!videoSrc && !imageSrc) ? '' : 'hidden'}`}>
+            <VideoCanvas points={points} videoRef={videoRef} autotracking={autotracking} pointReview={pointReview} />
             <Sidebar
               autotracking={autotracking}
+              pointReview={pointReview}
               positionData={positionData}
               uncertaintyMeters={uncertaintyMeters}
               resetScale={resetScale}
@@ -585,7 +642,7 @@ export default function App() {
         </div>
 
         {/* VIEW 2: ANALYSIS MODE (Full Screen) */}
-        <AnalysisPanel
+        {(videoSrc || imageSrc) && <AnalysisPanel
           chartData={chartData}
           xScale={xScale}
           yScale={yScale}
@@ -593,7 +650,7 @@ export default function App() {
           activeObjectColor={activeObjectColor}
           downloadCSV={downloadCSV}
           points={points}
-        />
+        />}
       </div>
 
        {/* --- ABOUT MODAL --- */}
@@ -653,5 +710,25 @@ export default function App() {
       )}
 
     </div>
+    {welcomeOpen && <WelcomeDialog language={language} dark={isDark} restored={hasRestoredData} error={projectError || mediaError} loading={mediaLoading && !mediaError}
+      onMedia={e=>{
+        if(e.target.files[0]){
+          setProjectError(null);
+          if(savedTiming!=null && (mediaError || mediaLoading))useStore.setState({hasRestoredData:true});
+        }
+        handleFileUpload(e);
+      }}
+      onProject={loadProject} onSave={saveProject}
+      onStartNew={()=>{cancelTiming.current();useStore.getState().resetProject();setSavedTiming(null);setProjectError(null);}} />}
+    {timingOpen && <FpsDialog key={`${videoSrc}:${timing.status}:${timing.fps}`} language={language} dark={isDark} timing={timing} savedFps={savedTiming}
+      onChoose={e=>{
+        if(e.target.files[0] && savedTiming!=null){useStore.setState({hasRestoredData:true});}
+        handleFileUpload(e);
+      }}
+      onConfirm={value=>{
+        useStore.setState({fps:value,fpsConfirmed:true,isPlaying:false,isTracking:false,currentFrameIndex:Math.floor(useStore.getState().currentTime*value+0.001)});
+        setSavedTiming(value);
+      }} />}
+    </>
   );
 }

@@ -287,3 +287,12 @@ curve-fitting correction, specs, tests and benchmark evidence.
 AT-REL-03: verify current remote branch and Netlify published commit/build settings,
 retain rollback reference, run test/lint/build, then review a production preview
 before publishing. No live deployment is implied by local build success.
+
+## Local-network HTTP compatibility — 2026-10-08
+
+Automatic point recording must work when crypto.randomUUID is unavailable on a
+plain HTTP LAN origin. Preserve point-ID uniqueness and format compatibility using
+getRandomValues as a fallback; IDs are identifiers, not authentication secrets.
+Keep capture, template matching, settings, coordinate units and frame stepping
+unchanged. Regression must exercise the actual recording handler without randomUUID.
+Owner LAN browser validation remains required.

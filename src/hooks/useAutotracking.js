@@ -3,6 +3,7 @@ import {useStore} from '../store/useStore';
 import {upsertTrackedPoint} from '../utils/autotracker';
 import {DETAIL_OPTIONS as DEFAULT_TRACKING_OPTIONS, seedDetailed, retuneDetailed, advanceDetailed, trackingRegion, predictTarget} from '../utils/detailTracker';
 import {seekVideo} from '../utils/videoSeek';
+import {createPointId} from '../utils/pointId';
 
 export function useAutotracking(videoRef) {
   const [enabled,setEnabled]=useState(false);
@@ -24,8 +25,8 @@ export function useAutotracking(videoRef) {
   useEffect(()=>{
     const unsubscribe=useStore.subscribe((next,prev)=>{
       const s=state.current;
-      const contextChanged=['videoSrc','imageSrc','activeObjId','fps','viewMode'].some(k=>next[k]!==prev[k]);
-      const toolChanged=['isTracking','isCalibrating','isSettingOrigin','activeClickTarget'].some(k=>next[k] && next[k]!==prev[k]);
+      const contextChanged=['videoSrc','imageSrc','activeObjId','fps','fpsConfirmed','viewMode'].some(k=>next[k]!==prev[k]);
+      const toolChanged=(next.spectrumInteractionVersion!==prev.spectrumInteractionVersion) || ['isTracking','isCalibrating','isSettingOrigin','activeClickTarget'].some(k=>next[k] && next[k]!==prev[k]);
       const pointsChanged=next.objects!==prev.objects && !s.writing;
       if(contextChanged || toolChanged || pointsChanged){
         s.abort?.abort();s.abort=null;s.session=null;s.pauseRequested=false;
@@ -68,7 +69,7 @@ export function useAutotracking(videoRef) {
     const s=state.current,store=useStore.getState(),video=videoRef.current;
     if(store.activeObjId==='COM')return;
     const native=showSession(session);
-    const point={...native,time:video.currentTime,id:crypto.randomUUID()};
+    const point={...native,time:video.currentTime,id:createPointId()};
     s.writing=true;
     try {store.setPoints(points=>upsertTrackedPoint(points,point,store.fps));}
     finally{s.writing=false;}
@@ -81,7 +82,7 @@ export function useAutotracking(videoRef) {
     invalidate();
     if(s.enabled){s.enabled=false;setEnabled(false);setStatus('off');return;}
     const store=useStore.getState();
-    if(!videoRef.current || !store.videoSrc || store.activeObjId==='COM')return;
+    if(!videoRef.current || !store.videoSrc || !store.fpsConfirmed || store.activeObjId==='COM')return;
     videoRef.current.pause();
     store.setIsPlaying(false);store.setIsTracking(false);store.setIsCalibrating(false);store.setIsSettingOrigin(false);store.setShowInputModal(false);store.setActiveClickTarget(null);
     s.enabled=true;setEnabled(true);setStatus('select');
@@ -89,7 +90,8 @@ export function useAutotracking(videoRef) {
 
   function select(x,y) {
     const s=state.current;
-    if(!s.enabled)return false;
+    const ui=useStore.getState();
+    if(!s.enabled || ui.sidebarTab!=='controls' || ui.sidebarViews.controls!=='automatic')return false;
     invalidate();
     videoRef.current.pause();useStore.getState().setIsPlaying(false);
     try {
@@ -130,7 +132,7 @@ export function useAutotracking(videoRef) {
 
   async function run(continuous) {
     const s=state.current,video=videoRef.current;
-    if(!s.enabled || !s.session || s.abort || !video)return;
+    if(!s.enabled || !s.session || s.abort || !video || !useStore.getState().fpsConfirmed)return;
     video.pause();useStore.getState().setIsPlaying(false);
     const controller=new AbortController();s.abort=controller;s.pauseRequested=false;
     setStatus('running');

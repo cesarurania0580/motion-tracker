@@ -59,3 +59,27 @@ Let the protractor be defined by three coordinate handles: Vertex $V(x_v, y_v)$,
      ctx.fillStyle = 'rgba(251, 191, 36, 0.2)'; // Faint gold fill
      ctx.fill();
      ```
+
+---
+
+## 5. Interaction and accessibility follow-up — 2026-09-20
+
+- MEASURE-01: When an image user chooses Measure the image, present distance and
+  angle as equal task choices with short outcome-focused descriptions. Explain that
+  distance may use pixels without calibration and angle needs no scale.
+- MEASURE-02: Tape endpoints and protractor vertex/arms are keyboard focusable or
+  have equivalent labeled numeric coordinate fields. Arrow movement, direct entry
+  and pointer dragging update the same measurement state and result.
+- MEASURE-03: On selection and movement, announce the active handle, coordinates and
+  current distance/angle in EN/ES. Use shape, labels and focus styling as well as
+  color to identify endpoints and arms.
+- MEASURE-04: Activating a tool gives one brief endpoint/vertex instruction. Hiding,
+  changing task or reopening a tool preserves completed measurements and cancels
+  only unfinished placement.
+- MEASURE-05: Controls follow the shared cyan/slate palette, retain visible focus
+  and meet 44px primary touch-target guidance without changing measurement-overlay
+  colors needed to distinguish the tools on the image.
+
+Owner validation covers calibrated and pixel distance, angle, task changes, narrow
+screens, both themes, EN/ES, pointer, keyboard and touch. Existing formulas and
+native-image coordinate behavior remain authoritative.
