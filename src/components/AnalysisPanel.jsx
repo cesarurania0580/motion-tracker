@@ -1,3 +1,5 @@
+import ExportActions from './ExportActions';
+import {canvasPNG} from '../utils/fileExport';
 import {spectralRows, spectrumCSV, validCalibration} from '../utils/spectroscopy';
 import {SPECTRUM_WORKFLOW_TEXT} from '../utils/spectrumWorkflow';
 import {SPECTRUM_TEXT} from '../utils/spectrumText';
@@ -96,9 +98,7 @@ export default function AnalysisPanel({
   const spectralMode = spectrum.mode;
   const calibratedSpectrum = validCalibration(wavelengthCalibration,lineProfile);
   function downloadSpectrum() {
-    const url=URL.createObjectURL(new Blob([spectrumCSV(spectrum.rows,spectrum.mode)],{type:'text/csv;charset=utf-8'}));
-    const link=document.createElement('a');link.href=url;link.download='spectrum.csv';
-    document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+    return {blob:new Blob([spectrumCSV(spectrum.rows,spectrum.mode)],{type:'text/csv;charset=utf-8'}),fileName:'spectrum.csv'};
   }
 
 
@@ -133,8 +133,7 @@ export default function AnalysisPanel({
   const exportScientificGraph = () => {
     const svgElement = document.querySelector("#motion-chart .recharts-surface");
     if (!svgElement) {
-        alert("Could not find chart to export.");
-        return;
+        throw new Error('Chart unavailable');
     }
 
     const svgClone = svgElement.cloneNode(true);
@@ -236,8 +235,21 @@ export default function AnalysisPanel({
     const svgBlob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
     const url = URL.createObjectURL(svgBlob);
 
+    return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
+    const timeout = setTimeout(() => finish(new Error('Chart rendering timed out')), 15000);
+    let settled = false;
+    function finish(error, blob) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      URL.revokeObjectURL(url);
+      if (error) reject(error);
+      else resolve({blob, fileName: `scientific_graph_${activeObjId}.png`});
+    }
+    img.onerror = () => finish(new Error('Chart image could not be decoded'));
+    img.onload = async () => {
+      try {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         
@@ -330,16 +342,11 @@ export default function AnalysisPanel({
             ctx.fillText(`R² = ${Number.isFinite(fitEquation.r2) ? fitEquation.r2.toFixed(4) : "N/A"}`, boxX + 50, boxY + 130);
         }
 
-        const pngUrl = canvas.toDataURL("image/png");
-        const downloadLink = document.createElement("a");
-        downloadLink.href = pngUrl;
-        downloadLink.download = `scientific_graph_${activeObjId}.png`;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        URL.revokeObjectURL(url);
+        finish(null, await canvasPNG(canvas));
+      } catch (error) { finish(error); }
     };
     img.src = url;
+    });
   };
 
   return (
@@ -718,12 +725,11 @@ export default function AnalysisPanel({
               </details>
               <h4 className="mt-3 mb-1 text-sm font-semibold">{a.export}</h4>
 
-              <button onClick={exportScientificGraph} className={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm`}>
-                <Camera size={18} /> {t.exportGraph}
-              </button>
-              <button onClick={analysisChartMode === 'spectroscopy' ? downloadSpectrum : downloadCSV} className={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border ${styles.buttonSecondary}`}>
-                <Download size={18} /> {analysisChartMode === 'spectroscopy' ? (SPECTRUM_WORKFLOW_TEXT[language] || SPECTRUM_WORKFLOW_TEXT.en).export : t.exportData}
-              </button>
+              <ExportActions language={language} buttonClass={`w-full flex items-center justify-center gap-2 font-semibold py-2 px-4 rounded transition border ${styles.buttonSecondary}`} actions={[
+                {label:t.exportGraph,create:exportScientificGraph,icon:<Camera size={18}/>},
+                {label:analysisChartMode === 'spectroscopy' ? (SPECTRUM_WORKFLOW_TEXT[language] || SPECTRUM_WORKFLOW_TEXT.en).export : t.exportData,create:analysisChartMode === 'spectroscopy' ? downloadSpectrum : downloadCSV,icon:<Download size={18}/>}
+              ]}/>
+
            </div>
 
         </div>

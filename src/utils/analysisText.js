@@ -1,5 +1,5 @@
 export const ANALYSIS_TEXT={
-  en:{axes:'Plot variables',range:'Time range',rangeStart:'Start time (s)',rangeEnd:'End time (s)',showAll:'Show all',
+  en:{exportPreparing:'Preparing file…',exportError:'Could not prepare the file. Try exporting again.',exportReady:'File ready:',saveFile:'Save file',openFile:'Open file',exportHint:'If no download appears, tap Save file. On iPad, you can also open the file and use Share → Save to Files.',axes:'Plot variables',range:'Time range',rangeStart:'Start time (s)',rangeEnd:'End time (s)',showAll:'Show all',
     fit:'Fit model',interpretation:'What this fit means',moreHelp:'About the fit',appearance:'Graph appearance',export:'Export',
     angularFrequency:'Angular frequency',object:'Object',empty:'Add measurements in Tracker to see a graph.',
     unavailable:'A fit is not available for these variables and points. Check the selected range and choose another model.',
@@ -12,7 +12,7 @@ export const ANALYSIS_TEXT={
     fitHelp:'The fit uses the plotted measurements within the selected time range. Time zero follows the experiment’s time setting. A model describes these data; it does not establish the underlying physical law.',
     r2Help:'R² describes how closely the fitted model follows the variation in the selected data. A high R² alone does not prove the model is appropriate.',
     measured:'Measurements',fitted:'Fitted curve'},
-  es:{axes:'Variables del gráfico',range:'Intervalo de tiempo',rangeStart:'Tiempo inicial (s)',rangeEnd:'Tiempo final (s)',showAll:'Mostrar todo',
+  es:{exportPreparing:'Preparando archivo…',exportError:'No se pudo preparar el archivo. Intenta exportar de nuevo.',exportReady:'Archivo listo:',saveFile:'Guardar archivo',openFile:'Abrir archivo',exportHint:'Si no aparece la descarga, toca Guardar archivo. En iPad también puedes abrir el archivo y usar Compartir → Guardar en Archivos.',axes:'Variables del gráfico',range:'Intervalo de tiempo',rangeStart:'Tiempo inicial (s)',rangeEnd:'Tiempo final (s)',showAll:'Mostrar todo',
     fit:'Modelo de ajuste',interpretation:'Qué significa este ajuste',moreHelp:'Acerca del ajuste',appearance:'Apariencia del gráfico',export:'Exportar',
     angularFrequency:'Frecuencia angular',object:'Objeto',empty:'Añade mediciones en Rastreador para ver un gráfico.',
     unavailable:'No hay un ajuste disponible para estas variables y puntos. Revisa el intervalo seleccionado y elige otro modelo.',

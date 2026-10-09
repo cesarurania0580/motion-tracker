@@ -87,3 +87,17 @@ PNG export. Keep fit calculations, sampled curve values, equation and R² intact
 Retain SVG clipping definitions when cloning for export. Verify a descending line
 crossing the lower boundary and other fit types at all four plot edges; owner
 visual preview/export acceptance remains pending.
+
+## Tablet export follow-up (2026-10-08)
+
+- ANA-11: Graph PNG and motion/spectrum CSV use Blob URLs. Keep a visible
+  user-tappable Save file and Open file link after preparation, including when
+  the automatic download is blocked. Explain saving through the iPad share menu.
+- ANA-12: Show preparation and failure feedback in EN/ES; image decoding and
+  canvas encoding failures must settle rather than silently doing nothing.
+  Revoke file URLs only after replacement/unmount with a delay for navigation.
+- Preserve CSV contents, graph styling/clipping and PC automatic downloads.
+- Acceptance: automated file-lifetime and encoding-error checks; owner checks
+  actual graph and data saving on iPad and PC. Owner confirmed both exports
+  work on iPad (download confirmation appears) and PC. Exact device root cause
+  remains unverified. Owner authorized committing and deploying this accepted fix.
