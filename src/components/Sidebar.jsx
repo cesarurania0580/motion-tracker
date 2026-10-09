@@ -1,3 +1,4 @@
+import ExportActions from './ExportActions';
 import RangeControl from './RangeControl';
 import {fpsChoice} from '../utils/videoTiming';
 import {IMAGE_TEXT} from '../utils/imageWorkspace';
@@ -371,9 +372,7 @@ export default function Sidebar({
             </div>
             {points.length > 0 && (
               <div className={`p-4 border-t ${styles.panelBgOnly} ${styles.panelBorder}`}>
-                <button onClick={downloadCSV} className="flex items-center gap-2 text-xs border border-cyan-500/40 hover:bg-cyan-500/10 min-h-11 py-2 px-3 rounded">
-                  <Download size={18} /> {t.downloadCSV}
-                </button>
+                <ExportActions language={language} actions={[{label:t.downloadCSV,create:downloadCSV,icon:<Download size={18}/>}]} buttonClass="flex items-center gap-2 text-xs border border-cyan-500/40 hover:bg-cyan-500/10 min-h-11 py-2 px-3 rounded"/>
               </div>
             )}
           </div>

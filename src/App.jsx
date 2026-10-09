@@ -600,12 +600,8 @@ export default function App() {
     const vHeaders = ["\nVelocity Data (Central Difference)", "Time (s)", "Vx (m/s)", "Vy (m/s)"];
     const vRows = velocityData.map(row => `,${row.time},${row.vx},${row.vy}`);
     const csvContent = headers.join(",") + "\n" + rows.join("\n") + "\n" + vHeaders.join(",") + "\n" + vRows.join("\n");
-    const link = document.createElement("a");
-    link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csvContent));
-    link.setAttribute("download", `motion_data_${activeObjId}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    return {blob: new Blob([csvContent], {type: 'text/csv;charset=utf-8'}),
+      fileName: `motion_data_${activeObjId}.csv`};
   };
 
   const mediaLoading=!!(videoSrc || imageSrc) && !(imageObj || (videoSrc && mediaDuration>0));
