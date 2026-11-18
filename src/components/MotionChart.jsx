@@ -1,13 +1,17 @@
+import {errorKey} from './graphing/videoGraphRows.js';
 import {useMemo,useRef,useState} from 'react';
-import {ComposedChart,Line,Scatter,XAxis,YAxis,CartesianGrid,ResponsiveContainer,ErrorBar} from 'recharts';
+import {ComposedChart,Line,Scatter,XAxis,YAxis,CartesianGrid,ResponsiveContainer,ErrorBar,ReferenceLine} from 'recharts';
 import CoordinateTooltip from './CoordinateTooltip';
 
-export default function MotionChart({data,plotX,plotY,xScale,yScale,labels,styles,formatTicks,fitEquation,color,objectLabel,dark}) {
+export default function MotionChart({data,plotX,plotY,xScale,yScale,labels,styles,formatTicks,fitEquation,color,objectLabel,dark,bounds,uncertaintyOverrides}) {
   const frame=useRef(null);
   const [hover,setHover]=useState(null);
   // Selection belongs to this dataset and these axes, never a stale render.
   const active=hover?.data===data && hover.plotX===plotX && hover.plotY===plotY?hover:null;
-  const measured=useMemo(()=>data.filter(row=>!row.isVirtual && Number.isFinite(row[plotX]) && Number.isFinite(row[plotY])),[data,plotX,plotY]);
+  const measured=useMemo(()=>data.filter(row=>!row.isVirtual && Number.isFinite(row[plotX]) && Number.isFinite(row[plotY])).map(row=>({...row,
+    displayXError:uncertaintyOverrides?.dx!==undefined&&uncertaintyOverrides.dx!==''?Number(uncertaintyOverrides.dx):row[errorKey(plotX)],
+    displayYError:uncertaintyOverrides?.dy!==undefined&&uncertaintyOverrides.dy!==''?Number(uncertaintyOverrides.dy):row[errorKey(plotY)],
+  })),[data,plotX,plotY,uncertaintyOverrides]);
   const select=(point)=>setHover({...point,data,plotX,plotY,width:frame.current?.clientWidth || 0,height:frame.current?.clientHeight || 0});
   const shape=({cx,cy,payload})=>{
     if(!Number.isFinite(cx) || !Number.isFinite(cy) || payload.isVirtual)return <g />;
@@ -36,9 +40,11 @@ export default function MotionChart({data,plotX,plotY,xScale,yScale,labels,style
           tickFormatter={formatTicks(yScale.step)} label={{value:labels[plotY],angle:-90,position:'insideLeft',offset:-40,fill:styles.chartAxis,fontSize:18}} />
         {fitEquation && <Line type="linear" dataKey="fitYContinuous" stroke="#f59e0b" strokeWidth={3}
           strokeDasharray="5 5" dot={false} activeDot={false} pointerEvents="none" isAnimationActive={false} />}
-        {['x','y'].includes(plotY) && <Scatter data={measured} dataKey={plotY} shape={()=> <g />} activeShape={false}
+        {bounds?.status==='ok'&&['min','max'].map((key,i)=><ReferenceLine key={key} segment={[{x:xScale.min,y:bounds[key].fn(xScale.min)},{x:xScale.max,y:bounds[key].fn(xScale.max)}]} ifOverflow="hidden" stroke={i?'#7c3aed':'#167b85'} strokeWidth={2} strokeDasharray={i?'8 3 2 3':'3 4'}/>)}
+        {<Scatter data={measured} dataKey={plotY} shape={()=> <g />} activeShape={false}
           pointerEvents="none" isAnimationActive={false}>
-          <ErrorBar dataKey="error" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" />
+          <ErrorBar dataKey="displayYError" width={6} strokeWidth={2} stroke="#60a5fa" direction="y" />
+          <ErrorBar dataKey="displayXError" width={6} strokeWidth={2} stroke="#60a5fa" direction="x" />
         </Scatter>}
         <Scatter data={measured} dataKey={plotY} fill={color} shape={shape} activeShape={false} isAnimationActive={false} />
       </ComposedChart>

@@ -19,7 +19,7 @@ test('GW-13/14: welcome dialog covers an inert workspace, offers media/project e
       return renderToStaticMarkup(<App/>);
     }
     export function renderTiming(props) {return renderToStaticMarkup(<FpsDialog language="en" timing={{status:'unknown',fps:null}} {...props}/>);}
-  `,resolveDir:fileURLToPath(new URL('../',import.meta.url)),loader:'jsx'},bundle:true,write:false,
+  `,resolveDir:fileURLToPath(new URL('../',import.meta.url)),loader:'jsx'},bundle:true,write:false,loader:{'.css':'empty','.ttf':'empty'},
     format:'cjs',platform:'node',jsx:'automatic',packages:'external',logLevel:'silent'});
   const storage=globalThis.localStorage;
   globalThis.localStorage={getItem:()=>null,setItem:()=>{}};
@@ -53,7 +53,9 @@ test('GW-13/14: welcome dialog covers an inert workspace, offers media/project e
       assert.match(html,/role="dialog" aria-modal="true"/);
       assert.match(html,/<div inert="" aria-hidden="true" class="app-shell/);
       assert.match(html,/video-transport/);
-      assert.match(html,/tracking-mode-trigger/);
+      assert.doesNotMatch(html,/tracking-mode-trigger/);
+      assert.match(html,language==='en'?/Data &amp; Graphing/:/Datos y gráficos/);
+      assert.match(html,/tracker-workspace[^"]*hidden/);
       assert.doesNotMatch(html,/Explore the workspace/);
       assert.match(html,/aria-hidden="true" class="[^"]*invisible opacity-0/);
     }

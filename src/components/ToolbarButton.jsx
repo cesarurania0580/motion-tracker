@@ -45,7 +45,7 @@ export default function ToolbarButton({label, description, icon, onClick, helpMo
       {createElement(icon,{size:20,'aria-hidden':true})}
       {done && <Check aria-hidden="true" size={12} className="absolute -top-1 -right-1 rounded-full bg-emerald-700 text-white"/>}
     </button>
-    {tip && tip.mode===helpMode && createPortal(<div ref={popup} id={id} role={tip.interactive?'dialog':'tooltip'} aria-label={tip.interactive?label:undefined}
+    {tip && tip.mode===helpMode && createPortal(<div data-theme={dark?'dark':'light'} ref={popup} id={id} role={tip.interactive?'dialog':'tooltip'} aria-label={tip.interactive?label:undefined}
       onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget))setTip(null);}}
       style={{position:'fixed',left:tip.left,top:Math.max(8,tip.top),width:'min(288px, calc(100vw - 16px))'}}
       className={`z-[200] rounded-xl border p-3 shadow-xl text-sm bg-slate-900 text-slate-100 border-slate-500`}>

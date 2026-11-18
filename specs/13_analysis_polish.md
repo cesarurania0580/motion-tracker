@@ -10,6 +10,8 @@ point interaction. Keyboard focus and touch should reveal the same coordinates.
 
 - ANA-01: Preserve graph-left/controls-right structure. Group axis selectors and
   time range separately, label inputs, provide Show all. Retain existing fit models.
+  Owner revision 2026-11-17: order Plot variables selectors X-axis then Y-axis
+  in visual and keyboard order, preserving selections and EN/ES labels.
 - ANA-02: Motion hover card shows object and unique plotted coordinates only,
   formatted sensibly with units. No duplicate chart-layer entries, internal keys,
   fit values, residuals or uncertainty rows. Ignore virtual fit samples. Use explicit

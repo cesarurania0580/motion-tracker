@@ -1,4 +1,4 @@
-# PhysTracker 1.2.0
+# PhysTracker 1.3.0
 
 [Use PhysTracker](https://phystracker.org/) · [Changelog](CHANGELOG.md) · [License](LICENSE)
 

@@ -1,9 +1,10 @@
 import RangeControl from './RangeControl';
+import {createTimelineScrubber} from '../utils/timelineScrubber';
 import {SPECTRUM_PLACEMENT_TEXT} from '../utils/spectrumWorkflow';
 import {mediaFitZoom, nextMediaZoom} from '../utils/mediaFit';
 import {dispersionAxis, referencePoints, anchorCalibration, sampleSpectrum, validCalibration} from '../utils/spectroscopy';
 import {GUIDE_TEXT} from '../utils/guideText';
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { TRANSLATIONS } from '../utils/translations';
 import { 
@@ -123,6 +124,10 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   const lineProfileStartRef = useRef(null);
   const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
   const currentTimeRef = useRef(0);
+  const scrubberRef = useRef(null);
+  const scrubFrameRef = useRef(null);
+  const [scrubBusy, setScrubBusy] = useState(false);
+  const [scrubTime, setScrubTime] = useState(null);
 
   useEffect(() => {
     currentTimeRef.current = currentTime;
@@ -641,6 +646,28 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
 
   }, [videoRef, points, videoDims, zoom, origin, originAngle, calibrationPoints, isCalibrating, isScaleVisible, dragState, draggedPointIndex, uncertaintyPx, reticlePos, isTracking, hasRestoredData, activeObjectColor, t, activeObjId, protractor, tapeMeasure, showVelocityVectors, showAccelerationVectors, vectorScale, pixelsPerMeter, lineProfile, imageObj, wavelengthCalibration, showGuidelines, isDark]);
 
+  useEffect(() => {
+    scrubFrameRef.current = time => {
+      currentTimeRef.current = time;
+      useStore.setState({currentTime: time, currentFrameIndex: Math.floor(time * fps + 0.001)});
+      renderFrame();
+    };
+  }, [fps, renderFrame]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !videoSrc || imageObj) return;
+    const scrubber = createTimelineScrubber(video, {
+      onFrame: time => scrubFrameRef.current?.(time),
+      onBusy: busy => { setScrubBusy(busy); if (!busy) setScrubTime(null); },
+      onError: () => setError(language === 'es'
+        ? 'No se pudo mostrar el fotograma. Intenta mover la barra de nuevo.'
+        : 'Could not display the frame. Try moving the timeline again.'),
+    });
+    scrubberRef.current = scrubber;
+    return () => { scrubber.dispose(); scrubberRef.current = null; };
+  }, [videoRef, videoSrc, imageObj, language, setError]);
+
   const sampleLineIntensity = useCallback(() => {
     const video = videoRef.current;
     if ((!video && !imageObj) || !lineProfile || videoDims.w === 0) {setSpectralData([]);return;}
@@ -765,6 +792,7 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
 
   const handlePointerDown = (e) => {
     if ((!videoRef.current && !imageObj) || showInputModal) return;
+    if (scrubberRef.current?.busy || videoRef.current?.seeking) return;
 
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
     if(pointReview.status==='correcting') {
@@ -1077,7 +1105,7 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
     if (dragState === 'reticle') {
       const dist = Math.sqrt(Math.pow(e.clientX - dragStartRef.current.x, 2) + Math.pow(e.clientY - dragStartRef.current.y, 2));
       
-      if (dist < 10 && activeObjId !== 'COM') {
+      if (dist < 10 && activeObjId !== 'COM' && !scrubberRef.current?.busy && !videoRef.current?.seeking) {
         const time = videoRef.current ? videoRef.current.currentTime : 0;
         setPoints([...points, { id: points.length, x: reticlePos.x, y: reticlePos.y, time }]);
         stepForward();
@@ -1120,6 +1148,7 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
 
   const stepForward = useCallback(() => { 
     if (imageObj) return;
+    if (scrubberRef.current?.busy || videoRef.current?.seeking) return;
     if (videoRef.current) { 
       videoRef.current.pause(); 
       setIsPlaying(false); 
@@ -1138,6 +1167,7 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
 
   const stepBackward = useCallback(() => { 
     if (imageObj) return;
+    if (scrubberRef.current?.busy || videoRef.current?.seeking) return;
     if (videoRef.current) { 
       videoRef.current.pause(); 
       setIsPlaying(false); 
@@ -1154,8 +1184,10 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
 
   const handleSeeked = useCallback(() => {
     if (imageObj) return;
+    if (scrubberRef.current?.busy) return;
     if (videoRef.current) {
       const t_val = videoRef.current.currentTime;
+      currentTimeRef.current = t_val;
       setCurrentTime(t_val);
       renderFrame();
     }
@@ -1168,6 +1200,7 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   const togglePlay = async () => { 
     if (imageObj) return;
     if (!videoRef.current) return; 
+    if (scrubberRef.current?.busy || videoRef.current.seeking) return;
     try { 
       if (isPlaying) { 
         videoRef.current.pause(); 
@@ -1185,10 +1218,10 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   const handleSeek = (e) => {
     if (imageObj) return;
     const time = parseFloat(e.target.value);
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-      setCurrentTime(time);
-      setCurrentFrameIndex(Math.floor(time * fps + 0.001));
+    if (scrubberRef.current && Number.isFinite(time)) {
+      setScrubTime(time);
+      setIsPlaying(false);
+      scrubberRef.current.request(time);
     }
   };
 
@@ -1229,6 +1262,7 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   const handleVideoError = useCallback(() => setError((GUIDE_TEXT[language] || GUIDE_TEXT.en).videoError), [setError, language]);
   
   const handleTimeUpdate = useCallback(() => {
+    if (scrubberRef.current?.busy) return;
     if (videoRef.current) {
       const t_val = videoRef.current.currentTime;
       setCurrentTime(t_val);
@@ -1375,22 +1409,23 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
           <Undo2 size={20} /> 
         </button>
         {!imageSrc && <><div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'} ${imageObj ? 'opacity-40 pointer-events-none' : ''}`}>
-          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepBackward();}} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame} aria-label={t.prevFrame}> <SkipBack size={20} /> </button>
-          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); togglePlay();}} disabled={!!imageObj} className="p-3 bg-cyan-400 hover:bg-cyan-300 text-slate-950 rounded-full transition shadow-lg shadow-cyan-900/20" title={t.playPause} aria-label={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button>
-          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepForward();}} disabled={!!imageObj} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame} aria-label={t.nextFrame}> <SkipForward size={20} /> </button>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepBackward();}} disabled={!!imageObj || scrubBusy} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame} aria-label={t.prevFrame}> <SkipBack size={20} /> </button>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); togglePlay();}} disabled={!!imageObj || scrubBusy} className="p-3 bg-cyan-400 hover:bg-cyan-300 text-slate-950 rounded-full transition shadow-lg shadow-cyan-900/20" title={t.playPause} aria-label={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepForward();}} disabled={!!imageObj || scrubBusy} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame} aria-label={t.nextFrame}> <SkipForward size={20} /> </button>
         </div>
-        <div className="flex-1 min-w-40 max-w-xl mx-2 flex items-center gap-2">
+        <div className="relative flex-1 min-w-40 max-w-xl mx-2 flex items-center gap-2">
           <span className={`text-xs font-mono w-12 text-right ${styles.textSecondary}`}>{formatTime(currentTime)}</span> 
           <RangeControl
             aria-label={language==='es'?'Posición del video':'Video position'}
             min="0" 
             max={duration || 100} 
             step="0.01" 
-            value={currentTime} 
+            value={scrubTime ?? currentTime}
             onChange={(e) => {pointReview.cancel(); autotracking.navigate(); handleSeek(e);}}
             disabled={!!imageObj} 
             className="flex-1 min-w-0"
           /> 
+          {scrubBusy && <span role="status" className={`absolute bottom-full right-0 text-xs ${styles.textSecondary}`}>{language === 'es' ? 'Buscando…' : 'Seeking…'}</span>}
           <span className={`text-xs font-mono w-12 ${styles.textSecondary}`}>{formatTime(duration)}</span> 
         </div>
         </>}

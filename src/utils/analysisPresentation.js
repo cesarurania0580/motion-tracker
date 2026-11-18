@@ -1,4 +1,4 @@
-const dimensions={time:[0,1],x:[1,0],y:[1,0],vx:[1,-1],vy:[1,-1]};
+const dimensions={time:[0,1],x:[1,0],y:[1,0],vx:[1,-1],vy:[1,-1],ax:[1,-2],ay:[1,-2]};
 
 function units([distance,time],calibrated) {
   const numerator=[],denominator=[];

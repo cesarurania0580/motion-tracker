@@ -1,3 +1,5 @@
+import MeasurementUncertainty from './MeasurementUncertainty.jsx';
+import {formatMeasurement} from '../utils/measurementUncertainty.js';
 import ExportActions from './ExportActions';
 import RangeControl from './RangeControl';
 import {fpsChoice} from '../utils/videoTiming';
@@ -31,7 +33,6 @@ export default function Sidebar({
   autotracking,
   pointReview,
   positionData,
-  uncertaintyMeters,
   downloadCSV,
   points,
 }) {
@@ -217,6 +218,7 @@ export default function Sidebar({
             <span>{uncertaintyPx}px</span>
           </div>
           <RangeControl aria-label={t.blurSize} min="0" max="50" value={uncertaintyPx} onChange={(e) => setUncertaintyPx(Number(e.target.value))}  />
+          <MeasurementUncertainty/>
         </div>
 
 
@@ -343,8 +345,8 @@ export default function Sidebar({
                   <tr>
                     <th className="p-2">#</th>
                     <th className="p-2">{t.time}</th>
-                    <th className="p-2">{t.xPos.split(' ')[0]} ({pixelsPerMeter ? 'm' : 'px'}) <span className="font-normal text-xs opacity-70">±{(pixelsPerMeter?uncertaintyMeters:uncertaintyPx).toFixed(3)}</span> </th>
-                    <th className="p-2"> {t.yPos.split(' ')[0]} ({pixelsPerMeter ? 'm' : 'px'}) <span className="font-normal text-xs opacity-70">±{(pixelsPerMeter?uncertaintyMeters:uncertaintyPx).toFixed(3)}</span> </th>
+                    <th className="p-2">{t.xPos.split(' ')[0]} ({pixelsPerMeter ? 'm' : 'px'})  </th>
+                    <th className="p-2"> {t.yPos.split(' ')[0]} ({pixelsPerMeter ? 'm' : 'px'})  </th>
                   </tr>
                 </thead>
                 <tbody className={`divide-y ${styles.tableDivider}`}>
@@ -356,8 +358,8 @@ export default function Sidebar({
                           className="min-h-11 min-w-11 rounded border border-cyan-500/40 underline disabled:opacity-40">{i+1}</button>}
                       </td>
                       <td className="p-2 font-mono text-blue-500">{p.time.toFixed(3)}</td>
-                      <td className={`p-2 font-mono ${styles.tableCell}`}>{p.x.toFixed(3)}</td>
-                      <td className={`p-2 font-mono ${styles.tableCell}`}>{p.y.toFixed(3)}</td>
+                      <td className={`p-2 font-mono ${styles.tableCell}`}>{formatMeasurement(p.x,p.xError)}</td>
+                      <td className={`p-2 font-mono ${styles.tableCell}`}>{formatMeasurement(p.y,p.yError)}</td>
                     </tr>
                   ))}
                   {points.length === 0 && (

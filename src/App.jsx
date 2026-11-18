@@ -1,9 +1,11 @@
+import {emptyBudget,scaleBudget,positionBounds,velocityBounds} from './utils/measurementUncertainty.js';
+import './styles/palette.css';
 import {restoredImageTask} from './utils/imageWorkspace';
 /* eslint-disable */
 /* eslint-enable no-undef */
 /**
  * PhysTracker
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: Cesar Cortes
  * Powered by: Gemini Pro AI
  * License: MIT
@@ -26,13 +28,14 @@ import { useStore } from './store/useStore';
 import Header from './components/Header';
 import {GUIDE_TEXT} from './utils/guideText';
 import Sidebar from './components/Sidebar';
-import AnalysisPanel from './components/AnalysisPanel';
+import GraphingPanel from './components/graphing/GraphingPanel';
 import VideoCanvas from './components/VideoCanvas';
 import {useAutotracking} from './hooks/useAutotracking';
 import {usePointReview} from './hooks/usePointReview';
 
 
 export default function App() {
+  const [welcomeDismissed,setWelcomeDismissed]=useState(false);
   const [projectError,setProjectError]=useState(null);
   const [timing,setTiming]=useState({status:'unknown',fps:null});
   const [savedTiming,setSavedTiming]=useState(null);
@@ -145,6 +148,8 @@ export default function App() {
   const plotX = useStore(state => state.plotX);
   const plotY = useStore(state => state.plotY);
   const uncertaintyPx = useStore(state => state.uncertaintyPx);
+  const measurementBudget = useStore(state=>state.measurementBudget);
+  const setMeasurementBudget = useStore(state=>state.setMeasurementBudget);
 
   const styles = {
     bg: isDark ? 'bg-slate-900' : 'bg-slate-50',
@@ -231,7 +236,7 @@ export default function App() {
 
   const saveProject = () => {
     const stateToSave = {
-        meta: { version: "1.2.0", date: new Date().toISOString() },
+        meta: { version: "1.3.0", date: new Date().toISOString() },
         objects,
         activeObjId,
         calibrationPoints,
@@ -241,6 +246,7 @@ export default function App() {
         zeroTime,
         fitModel,
         uncertaintyPx,
+        measurementBudget,
         language,
         fps,
         cropStart,
@@ -270,6 +276,7 @@ export default function App() {
   const loadProject = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setWelcomeDismissed(false);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -301,7 +308,8 @@ export default function App() {
         setOriginAngle(data.originAngle || 0);
         setZeroTime(data.zeroTime !== undefined ? data.zeroTime : true);
         setFitModel(data.fitModel || 'none');
-        setUncertaintyPx(data.uncertaintyPx || 10);
+        setUncertaintyPx(Number.isFinite(data.uncertaintyPx)&&data.uncertaintyPx>=0?data.uncertaintyPx:10);
+        setMeasurementBudget(data.measurementBudget);
         setHasRestoredData(true);
         useStore.setState({imageTask:hasRestoredData?restoredImageTask(useStore.getState()):null});
         setVideoSrc(null); 
@@ -348,6 +356,7 @@ export default function App() {
     const hasRestoredData=useStore.getState().hasRestoredData;
     const file = event.target.files[0];
     if (file) {
+      setWelcomeDismissed(false);
       cancelTiming.current();
       const preservedFps=hasRestoredData ? fps : null;
       setSavedTiming(preservedFps);
@@ -385,7 +394,7 @@ export default function App() {
       if (!hasRestoredData) setZeroTime(true);
       useStore.getState().setIsTracking(false);
       setReticlePos(null);
-      if (!hasRestoredData) setUncertaintyPx(10);
+      if (!hasRestoredData) {setUncertaintyPx(10);setMeasurementBudget(emptyBudget());}
       setDuration(0);
       setCurrentTime(0);
       setCurrentFrameIndex(0);
@@ -435,6 +444,7 @@ export default function App() {
 
   // Calculate Base Physics Data
   const { positionData, velocityData } = useMemo(() => {
+    const scale = scaleBudget(pixelsPerMeter,calibrationPoints,measurementBudget);
     const sortedPoints = points.map((point,sourceIndex)=>({...point,sourceIndex})).sort((a, b) => a.time - b.time);
     const posData = sortedPoints.map((p) => {
         const { x: rx, y: ry } = getRotatedCoords(p.x, p.y);
@@ -444,7 +454,9 @@ export default function App() {
           time: adjustedTime,
           x: formatVal(rx),
           y: formatVal(ry),
-          error: uncertaintyMeters
+          ...positionBounds(formatVal(rx),formatVal(ry),uncertaintyPx,pixelsPerMeter,scale),
+          timeError: zeroTime&&p.time===startTime?0:measurementBudget.time===''?null:Number(measurementBudget.time)*(zeroTime?2:1),
+          error: positionBounds(formatVal(rx),formatVal(ry),uncertaintyPx,pixelsPerMeter,scale).yError
         };
     });
 
@@ -519,13 +531,15 @@ export default function App() {
                 vy: vy,
                 x: null, 
                 y: null,
+                ...velocityBounds(sortedPoints,i,vx,vy,uncertaintyPx,pixelsPerMeter,scale,measurementBudget.time),
+                timeError: zeroTime&&pCurrent.time===startTime?0:measurementBudget.time===''?null:Number(measurementBudget.time)*(zeroTime?2:1),
                 error: null 
             });
         }
     }
 
     return { positionData: posData, velocityData: velData };
-  }, [points, origin, originAngle, pixelsPerMeter, zeroTime, uncertaintyPx, startTime, fps]);
+  }, [points, origin, originAngle, pixelsPerMeter, zeroTime, uncertaintyPx, startTime, fps, measurementBudget, calibrationPoints]);
 
   const activeData = useMemo(() => {
       let data = ['vx', 'vy'].includes(plotY) ? velocityData : positionData;
@@ -595,20 +609,19 @@ export default function App() {
   }, [activeData, fitEquation, plotX, xScale]);
 
   const downloadCSV = () => {
-    const headers = ["Time (s)", "X (m)", "Y (m)", "Uncertainty (m)"];
-    const rows = positionData.map(row => `${row.time},${row.x},${row.y},${row.error}`);
-    const vHeaders = ["\nVelocity Data (Central Difference)", "Time (s)", "Vx (m/s)", "Vy (m/s)"];
-    const vRows = velocityData.map(row => `,${row.time},${row.vx},${row.vy}`);
-    const csvContent = headers.join(",") + "\n" + rows.join("\n") + "\n" + vHeaders.join(",") + "\n" + vRows.join("\n");
+    const unit=pixelsPerMeter?'m':'px';
+    const headers = ['Time (s)',`X (${unit})`,`Y (${unit})`,`±ΔX (${unit})`,`±ΔY (${unit})`,'±Δt (s)',`Vx (${unit}/s)`,`Vy (${unit}/s)`,`±ΔVx (${unit}/s)`,`±ΔVy (${unit}/s)`];
+    const rows=positionData.map(row=>{const v=velocityData.find(v=>v.time===row.time);return [row.time,row.x,row.y,row.xError,row.yError,row.timeError,v?.vx,v?.vy,v?.vxError,v?.vyError].map(v=>v??'').join(',');});
+    const csvContent=headers.join(',')+'\n'+rows.join('\n');
     return {blob: new Blob([csvContent], {type: 'text/csv;charset=utf-8'}),
       fileName: `motion_data_${activeObjId}.csv`};
   };
 
   const mediaLoading=!!(videoSrc || imageSrc) && !(imageObj || (videoSrc && mediaDuration>0));
-  const welcomeOpen=(!videoSrc && !imageSrc) || mediaLoading || !!projectError || !!mediaError;
-  const timingOpen=!!videoSrc && !welcomeOpen && !fpsConfirmed;
+  const welcomeOpen=!welcomeDismissed && ((!videoSrc && !imageSrc) || mediaLoading || !!projectError || !!mediaError);
+  const timingOpen=!!videoSrc && !welcomeOpen && !mediaLoading && !projectError && !mediaError && !fpsConfirmed;
   return (
-    <>
+    <div className="theme-root" data-theme={theme}>
     <div inert={welcomeOpen || timingOpen} aria-hidden={welcomeOpen || timingOpen || undefined} className={`app-shell flex flex-col h-screen font-sans transition-colors duration-200 ${styles.bg} ${styles.text}`}>
       {/* HEADER WITH VIEW SWITCHER */}
       <Header
@@ -624,7 +637,7 @@ export default function App() {
 
       <div className="workspace-body flex flex-1 min-h-0 overflow-hidden">
         {/* VIEW 1: TRACKER MODE */}
-        <div className={`tracker-workspace flex-1 flex min-w-0 overflow-hidden ${viewMode === 'tracker' || (!videoSrc && !imageSrc) ? '' : 'hidden'}`}>
+        <div className={`tracker-workspace flex-1 flex min-w-0 overflow-hidden ${viewMode === 'tracker' ? '' : 'hidden'}`}>
             <VideoCanvas points={points} videoRef={videoRef} autotracking={autotracking} pointReview={pointReview} />
             <Sidebar
               autotracking={autotracking}
@@ -638,15 +651,10 @@ export default function App() {
         </div>
 
         {/* VIEW 2: ANALYSIS MODE (Full Screen) */}
-        {(videoSrc || imageSrc) && <AnalysisPanel
-          chartData={chartData}
-          xScale={xScale}
-          yScale={yScale}
-          fitEquation={fitEquation}
-          activeObjectColor={activeObjectColor}
-          downloadCSV={downloadCSV}
-          points={points}
-        />}
+        <GraphingPanel positionData={positionData} velocityData={velocityData} chartData={chartData} xScale={xScale} yScale={yScale}
+          fitEquation={fitEquation} downloadCSV={downloadCSV} points={points}
+          activeObjectColor={activeObjectColor} handleObjectSwitch={handleObjectSwitch}/>
+
       </div>
 
        {/* --- ABOUT MODAL --- */}
@@ -669,7 +677,7 @@ export default function App() {
                 <div className={`p-5 rounded-xl border space-y-3 ${isDark ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="grid grid-cols-[80px_1fr] gap-y-2 text-sm items-center">
                         <span className="opacity-60 font-semibold">{t.version}</span>
-                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.2.0</span>
+                        <span className="font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit dark:bg-blue-900/50 dark:text-blue-300">1.3.0</span>
                         
                         <span className="opacity-60 font-semibold">{t.author}</span>
                         <span>Cesar Cortes</span>
@@ -706,7 +714,7 @@ export default function App() {
       )}
 
     </div>
-    {welcomeOpen && <WelcomeDialog language={language} dark={isDark} restored={hasRestoredData} error={projectError || mediaError} loading={mediaLoading && !mediaError}
+    {welcomeOpen && <WelcomeDialog onGraphing={()=>{setWelcomeDismissed(true);useStore.getState().setViewMode('analysis');}} onClose={()=>setWelcomeDismissed(true)} language={language} dark={isDark} restored={hasRestoredData} error={projectError || mediaError} loading={mediaLoading && !mediaError}
       onMedia={e=>{
         if(e.target.files[0]){
           setProjectError(null);
@@ -725,6 +733,6 @@ export default function App() {
         useStore.setState({fps:value,fpsConfirmed:true,isPlaying:false,isTracking:false,currentFrameIndex:Math.floor(useStore.getState().currentTime*value+0.001)});
         setSavedTiming(value);
       }} />}
-    </>
+    </div>
   );
 }

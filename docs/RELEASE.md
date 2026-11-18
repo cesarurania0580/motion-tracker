@@ -1,4 +1,30 @@
-# PhysTracker 1.2.0 release record
+# PhysTracker release records
+
+## 1.3.0 — 2026-11-17
+
+Owner authorized preparation, PR preview verification, merge to main, and website
+deployment. Owner reports the local version working after timeline and axis-order
+changes. Release includes Advanced graphing, scientific typography, uncertainty
+analysis, palette/welcome updates, and coordinated timeline seeks. See CHANGELOG.
+
+Pre-release checks: 175 automated tests, lint and production build passed on the
+versioned release files. Browser access host is unavailable in the
+agent session, so no new interactive preview acceptance is claimed. Existing owner
+local acceptance and automated component tests are recorded separately from HTTP
+and deployment verification. No claim of comprehensive iPad acceptance.
+
+Verified rollback reference from Netlify site metadata on 2026-11-17:
+- Production branch: `main`; context: `production`; deploy state: `ready`.
+- Commit: `79c9afe6a5de9d0ad5bc33a8a0d762db646c8c5d`.
+- Deploy: `6ac84c3a4dbc690008d962bb`.
+- Deploy record: https://app.netlify.com/projects/phystracker/deploys/6ac84c3a4dbc690008d962bb
+- Domain: https://phystracker.org/
+
+Restore this prior deploy through Netlify if rollback is needed. Preserve the
+working tree. Pre-timeline source backup remains under the sibling backups folder;
+a final source archive is also created before the release commit.
+
+## 1.2.0 historical release record
 
 ## Owner acceptance
 The owner reports good browser tracking on free fall, simple harmonic motion,

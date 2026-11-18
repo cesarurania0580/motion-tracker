@@ -298,3 +298,38 @@ keyboard focus departure, outside presses and Escape after a cancelled touch.
 Physical iPad acceptance: set axes, select Manual Tracking, reopen to verify its
 checkmark, then move the crosshair and record/advance a point. Desktop mouse and
 keyboard acceptance remain required. This repair does not change zoom behavior.
+
+## Welcome dismissal — owner revision 2026-10-24
+
+Supersedes the earlier prohibition on dismissing into an empty workspace.
+- Add a clearly visible top-right Close button with an EN/ES accessible label and
+  a minimum 44px touch target. Escape dismisses the welcome step; within the
+  restored-work replacement confirmation, Escape still returns to the prior step.
+- Closing releases the modal overlay and background inert/aria-hidden state,
+  allowing exploration without selecting media. It does not delete restored work.
+- Keep dismissal local to this mounted app session. New media/project selections
+  reopen the loading/restoration/error flow; cancelled pickers do not. Preserve
+  FPS confirmation and prevent showing it while media is still loading or failed.
+- Keep existing media/project entry actions in the header. No automatic publishing.
+Validation: dialog click/Escape/translation checks and App dismissal/loading gating
+regressions; full tests, lint and build. Owner visual and device acceptance pending.
+
+Implementation evidence: top-right close button and Escape dismissal implemented
+in EN/ES; dismissal is session-local and clears background modal restrictions.
+New selections restore setup; FPS gating waits for decoded media. Two handler
+replay tests exercise bilingual close/Escape behavior, restored-work preservation,
+App modal gating, picker cancellation/project selection and video readiness.
+All 94 tests, lint, production build and whitespace checks pass. Browser/device
+acceptance remains pending. No commit, push or deployment performed.
+
+### Startup workspace consistency
+
+On a new app load, begin in Tracker even when autosave remembers analysis as the
+last tab. Restore measurements and calibration normally; do not restore navigation
+state into the welcome background. Welcome close leaves Tracker available and its
+explicit graphing action switches to analysis. In-session navigation remains intact.
+
+Verified startup regression fails before removing viewMode restoration and passes
+afterward: saved analysis opens Tracker, measurements/calibration remain intact,
+and explicit welcome graphing choice opens analysis and dismisses the welcome.
+150 tests, lint and production build pass; owner browser acceptance pending.
