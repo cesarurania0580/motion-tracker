@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 — 2026-11-17
+
+- Added Advanced graphing with editable spreadsheet data, selection, paste, fill, undo, scientific equations, and graph/data exports.
+- Added power, exponential and logarithmic fits, uncertainty controls, worst-fit bounds, and transfer of video measurements into graphing.
+- Added measurement uncertainty guidance, reversible analysis tools, and compatible video CSV imports.
+- Updated light/dark styling, welcome navigation, and X-before-Y graph selectors.
+- Improved timeline scrubbing with coordinated seeks and guards that preserve one-frame tracking advancement.
+- Kept existing project loading and original-media coordinate units; synchronized English and Spanish controls.
+
 ## 1.2.0 — 2026-09-13
 
 - Added automatic video tracking with native-pixel circular templates, adjustable search and adaptation settings, motion prediction, and loss diagnostics. Manual tracking remains available from the same toolbar control.

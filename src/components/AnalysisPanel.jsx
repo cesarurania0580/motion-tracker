@@ -1,3 +1,8 @@
+import VideoWorstFit from './graphing/VideoWorstFit.jsx';
+import {videoGraphRows} from './graphing/videoGraphRows.js';
+import {uncertaintyRows,worstFit} from './graphing/worstFit.js';
+import {scaleBudget,formatMeasurement} from '../utils/measurementUncertainty.js';
+import {REFERENCE_EMISSION_LINES} from './graphing/spectralReferences.js';
 import ExportActions from './ExportActions';
 import {canvasPNG} from '../utils/fileExport';
 import {spectralRows, spectrumCSV, validCalibration} from '../utils/spectroscopy';
@@ -32,25 +37,6 @@ const getTickFormatter = (step) => {
   return (val) => Number(val).toFixed(decimals);
 };
 
-// --- EMISSION SPECTRA PRESETS ---
-const REFERENCE_EMISSION_LINES = [
-  // Hydrogen
-  { element: 'h2', wl: 410.2, color: '#a855f7', label: 'H-δ (410.2 nm)' },
-  { element: 'h2', wl: 434.0, color: '#6366f1', label: 'H-γ (434.0 nm)' },
-  { element: 'h2', wl: 486.1, color: '#06b6d4', label: 'H-β (486.1 nm)' },
-  { element: 'h2', wl: 656.3, color: '#ef4444', label: 'H-α (656.3 nm)' },
-  // Helium
-  { element: 'he', wl: 447.1, color: '#3b82f6', label: 'He (447.1 nm)' },
-  { element: 'he', wl: 501.6, color: '#10b981', label: 'He (501.6 nm)' },
-  { element: 'he', wl: 587.6, color: '#eab308', label: 'He (587.6 nm)' },
-  { element: 'he', wl: 667.8, color: '#f43f5e', label: 'He (667.8 nm)' },
-  // Mercury
-  { element: 'hg', wl: 404.7, color: '#c084fc', label: 'Hg (404.7 nm)' },
-  { element: 'hg', wl: 435.8, color: '#2563eb', label: 'Hg (435.8 nm)' },
-  { element: 'hg', wl: 546.1, color: '#22c55e', label: 'Hg (546.1 nm)' },
-  { element: 'hg', wl: 579.0, color: '#d97706', label: 'Hg (579.0 nm)' }
-];
-
 export default function AnalysisPanel({
   chartData,
   xScale,
@@ -59,9 +45,9 @@ export default function AnalysisPanel({
   activeObjectColor,
   downloadCSV,
   points,
+  theme='light',
 }) {
   // Zustand Store Selectors
-  const theme = useStore((state) => state.theme);
   const language = useStore((state) => state.language);
   const activeObjId = useStore((state) => state.activeObjId);
   const viewMode = useStore((state) => state.viewMode);
@@ -90,6 +76,13 @@ export default function AnalysisPanel({
   const setFitModel = useStore((state) => state.setFitModel);
   const setLegendPosition = useStore((state) => state.setLegendPosition);
 
+  const [showWorst,setShowWorst]=React.useState(false),[dx,setDX]=React.useState(''),[dy,setDY]=React.useState('');
+  const budget=useStore(s=>s.measurementBudget),calibration=useStore(s=>s.calibrationPoints);
+  const scale=scaleBudget(pixelsPerMeter,calibration,budget);
+  const worstEnabled=showWorst&&fitModel==='linear'&&analysisChartMode==='kinematics';
+  const plottedRows=React.useMemo(()=>videoGraphRows(chartData,plotX,plotY),[chartData,plotX,plotY]);
+  const uncertain=React.useMemo(()=>uncertaintyRows(plottedRows,dx,dy),[plottedRows,dx,dy]);
+  const bounds=React.useMemo(()=>worstEnabled?worstFit(uncertain,fitEquation?.params):null,[worstEnabled,uncertain,fitEquation]);
   const isDark = theme === 'dark';
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
   const st = SPECTRUM_TEXT[language] || SPECTRUM_TEXT.en;
@@ -111,9 +104,9 @@ export default function AnalysisPanel({
     panelBorder: isDark ? 'border-slate-700' : 'border-slate-200',
     input: isDark ? 'bg-slate-900 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900',
     buttonSecondary: isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200',
-    chartGrid: isDark ? "#334155" : "#e2e8f0",
-    chartAxis: isDark ? "#cbd5e1" : "#475569",
-    chartTooltip: isDark ? { backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' } : { backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a' }
+    chartGrid: isDark ? "#3D526B" : "#C9D8E7",
+    chartAxis: isDark ? "#ACBED1" : "#4D657B",
+    chartTooltip: isDark ? { backgroundColor: '#192A3E', borderColor: '#3D526B', color: '#E3EDF8' } : { backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a' }
   };
 
   const baseLabels = {
@@ -283,7 +276,7 @@ export default function AnalysisPanel({
         if (analysisChartMode !== 'spectroscopy' && fitEquation && legendPosition !== 'none') {
             const padding = 20;
             const boxW = 480; 
-            const boxH = 150; 
+            const boxH = bounds?.status==='ok'?270:150;
 
             let boxX = leftMargin + minX + padding;
             let boxY = topMargin + minY + padding;
@@ -340,6 +333,15 @@ export default function AnalysisPanel({
             ctx.fillText(equationText, boxX + 50, boxY + 100);
 
             ctx.fillText(`R² = ${Number.isFinite(fitEquation.r2) ? fitEquation.r2.toFixed(4) : "N/A"}`, boxX + 50, boxY + 130);
+            if(bounds?.status==='ok'){
+              ctx.fillText(`m = ${formatMeasurement(fitEquation.params.m,bounds.delta)} ${fitUnits.m}`,boxX+20,boxY+160,boxW-40);
+              ctx.fillText(`b = ${formatMeasurement(fitEquation.params.b,bounds.intercept.delta)} ${fitUnits.b}`,boxX+20,boxY+190,boxW-40);
+              for(const [index,key] of ['min','max'].entries()){
+                ctx.strokeStyle=index?'#7c3aed':'#167b85';ctx.setLineDash(index?[8,3,2,3]:[3,4]);
+                ctx.beginPath();ctx.moveTo(boxX+15,boxY+215+index*30);ctx.lineTo(boxX+40,boxY+215+index*30);ctx.stroke();ctx.setLineDash([]);
+                ctx.fillText(`${key==='min'?(language==='es'?'Pendiente mínima':'Minimum gradient'):(language==='es'?'Pendiente máxima':'Maximum gradient')}: ${bounds[key].m.toPrecision(4)}`,boxX+50,boxY+220+index*30,boxW-70);
+              }
+            }
         }
 
         finish(null, await canvasPNG(canvas));
@@ -350,6 +352,7 @@ export default function AnalysisPanel({
   };
 
   return (
+    <div data-theme={theme} className={`flex flex-col flex-1 min-w-0 min-h-0 ${viewMode === 'analysis' ? '' : 'hidden'}`}>
     <div className={`analysis-workspace flex flex-1 min-w-0 overflow-hidden ${styles.bg} ${viewMode === 'analysis' ? '' : 'hidden'}`}>
         <div className="analysis-plot flex-1 min-w-0 p-3 lg:p-6 flex flex-col">
           <div id="motion-chart" className={`rounded-xl border flex-1 flex flex-col overflow-hidden shadow-2xl ${styles.panel}`}>
@@ -380,15 +383,15 @@ export default function AnalysisPanel({
                     <fieldset className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-500/30 px-3 pb-2">
                     <legend className={`px-1 text-xs font-semibold ${styles.textSecondary}`}>{a.axes}</legend>
                     <div className="flex items-center gap-2">
-                      <label htmlFor="analysis-y" className={`text-xs font-bold ${styles.textSecondary}`}>{t.yAxis}</label>
-                      <select id="analysis-y" value={plotY} onChange={(e) => setPlotY(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}>
-                        <option value="x">{labels.x}</option> <option value="y">{labels.y}</option> <option value="vx">{labels.vx}</option> <option value="vy">{labels.vy}</option> <option value="time">{labels.time}</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
                       <label htmlFor="analysis-x" className={`text-xs font-bold ${styles.textSecondary}`}>{t.xAxis}</label>
                       <select id="analysis-x" value={plotX} onChange={(e) => setPlotX(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}>
                          <option value="time">{labels.time}</option> <option value="x">{labels.x}</option> <option value="y">{labels.y}</option> <option value="vx">{labels.vx}</option> <option value="vy">{labels.vy}</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="analysis-y" className={`text-xs font-bold ${styles.textSecondary}`}>{t.yAxis}</label>
+                      <select id="analysis-y" value={plotY} onChange={(e) => setPlotY(e.target.value)} className={`border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-cyan-600 ${styles.input}`}>
+                        <option value="x">{labels.x}</option> <option value="y">{labels.y}</option> <option value="vx">{labels.vx}</option> <option value="vy">{labels.vy}</option> <option value="time">{labels.time}</option>
                       </select>
                     </div>
                     </fieldset>
@@ -468,7 +471,7 @@ export default function AnalysisPanel({
              <div className="flex-1 p-4 relative">
                 {analysisChartMode === 'kinematics' ? (
                   <>
-                    <MotionChart data={chartData} plotX={plotX} plotY={plotY} xScale={xScale} yScale={yScale}
+                    <MotionChart bounds={bounds} uncertaintyOverrides={worstEnabled?{dx,dy}:null} data={chartData} plotX={plotX} plotY={plotY} xScale={xScale} yScale={yScale}
                       labels={labels} styles={styles} formatTicks={getTickFormatter} fitEquation={fitEquation}
                       color={activeObjectColor} objectLabel={activeObjId==='COM'?t.comShort:`${a.object} ${activeObjId}`} dark={isDark} />
                     {points.length === 0 && ( <div className={`absolute inset-0 pointer-events-none flex items-center justify-center italic ${styles.textSecondary}`}> {a.empty} </div> )}
@@ -578,6 +581,8 @@ export default function AnalysisPanel({
                     </select>
                  </div>
                </div>
+               <p className="text-xs">{language==='es'?'Las barras usan tu presupuesto de incertidumbre en Controles → Ajustes de medición.':'Bars use your uncertainty budget in Controls → Measurement settings.'} {!scale.complete&&(language==='es'?'La calibración está incompleta: barras de posición parciales.':'Calibration is incomplete: position bars are partial.')}</p>
+               {fitModel==='linear'&&<VideoWorstFit language={language} enabled={showWorst} onEnabled={setShowWorst} dx={dx} dy={dy} onDX={setDX} onDY={setDY} bounds={bounds} fit={fitEquation} units={fitUnits}/>}
                {fitModel!=='none' && fitModel!=='sinusoidal' && !fitEquation && <p role="status" className={`text-sm ${styles.textSecondary}`}>{a.unavailable}</p>}
                {fitModel === 'sinusoidal' && (!fitEquation || fitEquation.warning) && (
                  <p role="status" className={`text-sm ${styles.textSecondary}`}>
@@ -733,6 +738,7 @@ export default function AnalysisPanel({
            </div>
 
         </div>
+    </div>
     </div>
   );
 }

@@ -15,6 +15,14 @@
 13. Analysis layout and coordinates-only tooltips: `13_analysis_polish.md`
 14. Agreed Controls / Data / Tools sidebar and focused subviews: `14_sidebar_task_tabs.md`
 
+15. Isolated scientific graphing feasibility trial: `15_graphing_trial.md`
+
+16. Scientific graphing integration: `16_graphing_integration.md`
+
+17. Worst-fit lines and graph layout comparison: `17_worst_fit_and_layout_trial.md`
+
+18. Design F and independent graphing: `18_independent_graphing.md`
+
 ## Workflow
 
 Brief → numbered spec (requirements, boundaries, acceptance IDs) → design/ADR →
@@ -64,3 +72,9 @@ with the acceptance checklist in the consolidated progress note below.
 - Six-phase roadmap and priorities: `09_student_experience_roadmap.md`.
 - Validation: `../docs/testing/student-experience.md` and `../docs/testing/spectroscopy.md`.
 - Prior tracking evidence: `../docs/testing/autotracking.md` and related ADRs.
+
+19. Unified Classic blue / Midnight blue themes: `19_app_palette.md`.
+
+20. Measurement uncertainty and student analysis: `20_measurement_uncertainty.md`.
+
+21. Functional minimal graphing layout bench: `21_functional_graph_layouts.md`.

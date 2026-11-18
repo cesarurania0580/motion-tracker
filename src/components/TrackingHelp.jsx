@@ -72,7 +72,7 @@ export default function TrackingHelp({label, help, inputId}) {
         <Info size={14} aria-hidden="true"/>
       </button>
     </span>
-    {position && createPortal(<div id={id} ref={popup} role="tooltip" style={{position:'fixed',...position,width:'min(288px, calc(100vw - 16px))',maxHeight:'calc(100dvh - 16px)',overflowY:'auto'}}
+    {position && createPortal(<div data-theme="dark" id={id} ref={popup} role="tooltip" style={{position:'fixed',...position,width:'min(288px, calc(100vw - 16px))',maxHeight:'calc(100dvh - 16px)',overflowY:'auto'}}
       onPointerEnter={()=>controller.hold(id)} onPointerLeave={leave}
       className="tracking-help-popup z-[200] rounded-xl border border-slate-500 bg-slate-900 text-slate-100 p-3 shadow-xl text-xs leading-relaxed">
       {help}

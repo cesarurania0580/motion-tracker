@@ -125,6 +125,28 @@ choice and proposed axes progression are dropped. Preserve existing scale, axes
 and tracking behavior; earlier CAL-05 pending status is superseded. Keyboard/numeric
 manipulation remains future accessibility work.
 
+## Timeline scrubbing — 2026-11-17
+
+- SCRUB-01: Pause playback while dragging; retain only the latest requested time
+  while a seek is in progress. Yield a paint between completed preview frames.
+- SCRUB-02: Keep the slider's requested position separate from decoded frame state.
+  Synchronize the canvas, timestamp and frame index after seek completion.
+- SCRUB-03: Do not accept canvas measurements or frame/play commands until the
+  final timeline frame is ready. No queued timeline seek may override another
+  navigation owner, survive media replacement, or survive unmount.
+- SCRUB-04: Preserve manual point coordinates/timestamps and the existing
+  one-frame, midpoint-target stepping calculation. Automatic tracking retains
+  its existing seek helper and matching logic.
+- Verify controller coalescing, cancellation, errors, same-position requests,
+  component measurement guards, and click-to-track advancement automatically.
+  Owner browser checks: drag paused/playing video; release and track multiple
+  consecutive frames; step forward/back; automatic tracking; desktop/iPad.
+  Smoothness and real decoded-frame accuracy require owner browser acceptance.
+
+Implementation evidence: 175 tests, lint, production build and whitespace checks
+pass. Controller and real component handler tests cover SCRUB-01–04 using simulated
+video completion; browser/device acceptance remains pending. See progress 2026-11-17.
+
 ## Workspace zoom repair — 2026-10-08
 
 - Fit to workspace recomputes the initial media-fit calculation using the current

@@ -50,14 +50,14 @@ export default function Header({autotracking, handleObjectSwitch, handleOriginBu
     onKeyDown={e=>{if(e.key==='Escape' && menu){e.preventDefault();closeMenu();}}}>
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2">
       <div className="flex flex-wrap items-center gap-3 min-w-0">
-        {!s.logoError?<img src={dark?'/logo-dark.png':'/logo-light.png'} alt="PhysTracker" className="h-auto w-40 shrink-0" onError={()=>store.setLogoError(true)}/>:<strong className="text-cyan-500">PhysTracker</strong>}
+        {!s.logoError?<img src="/logo-dark.png" alt="PhysTracker" className="h-auto w-40 shrink-0" onError={()=>store.setLogoError(true)}/>:<strong className="text-cyan-500">PhysTracker</strong>}
         <div className={`flex rounded-lg border p-1 ${dark?'bg-slate-900 border-slate-700':'bg-slate-100 border-slate-300'}`}>
           {['tracker','analysis'].map(view=><button key={view} aria-pressed={s.viewMode===view} onClick={()=>{if(view==='analysis' && s.lineProfile)analyze();else store.setViewMode(view);}}
             className={`px-3 min-h-9 rounded text-sm ${s.viewMode===view?(dark?'bg-cyan-500/15 text-cyan-300':'bg-cyan-50 text-cyan-800 shadow-sm'):'opacity-80'}`}>
-            {view==='tracker'?(s.imageSrc?(IMAGE_TEXT[s.language] || IMAGE_TEXT.en).workspace:t.trackerMode):t.analysisMode}
+            {view==='tracker'?(s.imageSrc?(IMAGE_TEXT[s.language] || IMAGE_TEXT.en).workspace:t.trackerMode):(s.language==='es'?'Datos y gráficos':'Data & Graphing')}
           </button>)}
         </div>
-        {!s.imageSrc && <div className={`flex rounded-lg border p-1 ${dark?'bg-slate-900 border-slate-700':'bg-slate-100 border-slate-300'}`}>
+        {s.viewMode==='tracker' && !s.imageSrc && <div className={`flex rounded-lg border p-1 ${dark?'bg-slate-900 border-slate-700':'bg-slate-100 border-slate-300'}`}>
           {['A','B','COM'].map(id=><button key={id} aria-pressed={s.activeObjId===id} onClick={()=>handleObjectSwitch(id)}
             className={`flex items-center gap-1 px-3 min-h-9 rounded text-sm ${s.activeObjId===id?(id==='A'?'bg-red-500 text-white':id==='B'?'bg-blue-500 text-white':'bg-purple-500 text-white'):'opacity-80'}`}>
             {id==='COM'?<Activity size={14}/>:<Users size={14}/>} {id==='A'?t.objectA:id==='B'?t.objectB:t.comShort}
@@ -65,6 +65,7 @@ export default function Header({autotracking, handleObjectSwitch, handleOriginBu
         </div>}
       </div>
       <div aria-label={g.title} className="flex flex-wrap items-center gap-1">
+        {s.viewMode==='tracker' && <>
         {button('media',Upload,g.media,s.hasRestoredData?g.restore:g.mediaHelp,()=>mediaInput.current.click())}
         {button('scale',Ruler,s.isCalibrating?g.doneDistance:s.pixelsPerMeter?(s.isScaleVisible?t.hideScale:t.showScale):g.scale,g.scaleHelp,()=>{store.setViewMode('tracker');handleScaleButtonClick();},{active:s.isCalibrating,blocked:!flow.ready,reason:g.needMedia})}
         {button('axes',Move,g.axes,g.axesHelp,()=>{store.setViewMode('tracker');handleOriginButtonClick();},{active:s.isSettingOrigin,blocked:!flow.ready,reason:g.needMedia})}
@@ -74,6 +75,7 @@ export default function Header({autotracking, handleObjectSwitch, handleOriginBu
             blocked={disabled || !flow.ready} reason={s.activeObjId==='COM'?g.com:g.needMedia}
             suggested={suggested==='track'} active={mode!=='off'}
             aria-haspopup="menu" aria-expanded={open}/>} />}
+        </>}
         {button('options',Menu,t.moreOptions,g.optionsHelp,e=>openMenu('options',e),{...accessibleMenuProps('options'),helpMode:false,active:help})}
       </div>
     </div>

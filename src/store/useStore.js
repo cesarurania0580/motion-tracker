@@ -1,3 +1,4 @@
+import {emptyBudget,cleanBudget} from '../utils/measurementUncertainty.js';
 import {initialSamplingLine} from '../utils/spectrumWorkflow.js';
 import {anchorCalibration} from '../utils/spectroscopy.js';
 import { create } from 'zustand';
@@ -44,6 +45,7 @@ const getInitialState = () => {
     fitModel: 'none',
     legendPosition: 'top-left',
     uncertaintyPx: 10,
+    measurementBudget: emptyBudget(),
     fps: 30,
     cropStart: '',
     cropEnd: '',
@@ -122,8 +124,10 @@ const getInitialState = () => {
       if (data.originAngle) restored.originAngle = data.originAngle;
       if (data.zeroTime !== undefined) restored.zeroTime = data.zeroTime;
       if (data.fitModel) restored.fitModel = data.fitModel;
-      if (data.uncertaintyPx) restored.uncertaintyPx = data.uncertaintyPx;
-      if (data.viewMode) restored.viewMode = data.viewMode;
+      if (Number.isFinite(data.uncertaintyPx) && data.uncertaintyPx>=0) restored.uncertaintyPx = data.uncertaintyPx;
+      restored.measurementBudget = cleanBudget(data.measurementBudget);
+      // Start each app load in Tracker behind the welcome dialog. Restore data,
+      // but leave navigation to the welcome choices or the in-session tabs.
       if (data.language) restored.language = data.language;
       if (data.fps) restored.fps = data.fps;
       if (data.cropStart !== undefined) restored.cropStart = data.cropStart;
@@ -319,6 +323,8 @@ const useStore = create((set, get) => ({
     return true;
   },
 
+  setMeasurementBudget: value => set({measurementBudget:cleanBudget(value)}),
+
   // Reset state to default
   resetProject: () => {
     if (typeof window !== 'undefined') {
@@ -331,6 +337,8 @@ const useStore = create((set, get) => ({
         { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
       ],
       activeObjId: 'A',
+      uncertaintyPx: 10,
+      measurementBudget: emptyBudget(),
       calibrationPoints: [],
       pixelsPerMeter: null,
       origin: null,
@@ -379,6 +387,7 @@ useStore.subscribe((state) => {
     zeroTime: state.zeroTime,
     fitModel: state.fitModel,
     uncertaintyPx: state.uncertaintyPx,
+    measurementBudget: state.measurementBudget,
     viewMode: state.viewMode,
     language: state.language,
     fps: state.fps,
