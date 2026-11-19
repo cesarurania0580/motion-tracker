@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 — 2026-11-18
+
+- Added keyboard shortcuts for manual tracking: Space records a point and advances one frame, the arrow keys or `,` and `.` step frames, and Backspace removes the last point and returns to its frame. Space plays or pauses the video outside manual tracking.
+- Fixed the video moving when entering the scale distance on a zoomed, panned video.
+- Changed the default point-location uncertainty from 10 px to 5 px. Saved work and project files keep their stored value.
+
 ## 1.3.0 — 2026-11-17
 
 - Added Advanced graphing with editable spreadsheet data, selection, paste, fill, undo, scientific equations, and graph/data exports.
