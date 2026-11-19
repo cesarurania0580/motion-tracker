@@ -78,3 +78,5 @@ with the acceptance checklist in the consolidated progress note below.
 20. Measurement uncertainty and student analysis: `20_measurement_uncertainty.md`.
 
 21. Functional minimal graphing layout bench: `21_functional_graph_layouts.md`.
+
+22. Keyboard shortcuts for manual tracking and frame stepping: `22_keyboard_tracking_shortcuts.md`.

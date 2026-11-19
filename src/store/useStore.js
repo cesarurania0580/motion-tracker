@@ -44,7 +44,7 @@ const getInitialState = () => {
     zeroTime: true,
     fitModel: 'none',
     legendPosition: 'top-left',
-    uncertaintyPx: 10,
+    uncertaintyPx: 5,
     measurementBudget: emptyBudget(),
     fps: 30,
     cropStart: '',
@@ -337,7 +337,7 @@ const useStore = create((set, get) => ({
         { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
       ],
       activeObjId: 'A',
-      uncertaintyPx: 10,
+      uncertaintyPx: 5,
       measurementBudget: emptyBudget(),
       calibrationPoints: [],
       pixelsPerMeter: null,

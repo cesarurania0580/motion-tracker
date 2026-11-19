@@ -4,6 +4,7 @@ import {SPECTRUM_PLACEMENT_TEXT} from '../utils/spectrumWorkflow';
 import {mediaFitZoom, nextMediaZoom} from '../utils/mediaFit';
 import {dispersionAxis, referencePoints, anchorCalibration, sampleSpectrum, validCalibration} from '../utils/spectroscopy';
 import {GUIDE_TEXT} from '../utils/guideText';
+import {trackerShortcut, createFocusModality} from '../utils/trackerShortcuts';
 import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { TRANSLATIONS } from '../utils/translations';
@@ -128,6 +129,17 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   const scrubFrameRef = useRef(null);
   const [scrubBusy, setScrubBusy] = useState(false);
   const [scrubTime, setScrubTime] = useState(null);
+  const shortcutRef = useRef(null);
+  const focusModalityRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return undefined;
+    const modality = createFocusModality(window);
+    focusModalityRef.current = modality;
+    const onKeyDown = (event) => shortcutRef.current?.(event);
+    window.addEventListener('keydown', onKeyDown);
+    return () => { window.removeEventListener('keydown', onKeyDown); modality.dispose(); focusModalityRef.current = null; };
+  }, []);
 
   useEffect(() => {
     currentTimeRef.current = currentTime;
@@ -1097,6 +1109,14 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
     }
   };
 
+  // One routine for a reticle tap and the Space shortcut (spec 22 KEY-01).
+  const recordReticlePoint = () => {
+    if (activeObjId === 'COM' || !reticlePos || scrubberRef.current?.busy || videoRef.current?.seeking) return;
+    const time = videoRef.current ? videoRef.current.currentTime : 0;
+    setPoints([...points, { id: points.length, x: reticlePos.x, y: reticlePos.y, time }]);
+    stepForward();
+  };
+
   const handlePointerUp = (e) => {
     if (dragState) {
       e.currentTarget.releasePointerCapture(e.pointerId);
@@ -1105,11 +1125,7 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
     if (dragState === 'reticle') {
       const dist = Math.sqrt(Math.pow(e.clientX - dragStartRef.current.x, 2) + Math.pow(e.clientY - dragStartRef.current.y, 2));
       
-      if (dist < 10 && activeObjId !== 'COM' && !scrubberRef.current?.busy && !videoRef.current?.seeking) {
-        const time = videoRef.current ? videoRef.current.currentTime : 0;
-        setPoints([...points, { id: points.length, x: reticlePos.x, y: reticlePos.y, time }]);
-        stepForward();
-      }
+      if (dist < 10) recordReticlePoint();
     } else if (dragState === 'point') {
       if (isHoveringTrash && activeObjId !== 'COM') {
         const newPoints = points.filter((_, i) => i !== draggedPointIndex);
@@ -1123,6 +1139,10 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   };
 
   // Timeline Event Handlers
+  const focusDistanceInput = useCallback((input) => {
+    if (input) input.focus({ preventScroll: true });
+  }, []);
+
   const submitCalibrationLocal = () => {
     const meters = parseFloat(realDistanceInput);
     if (!isNaN(meters) && meters > 0) {
@@ -1181,6 +1201,27 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
       setCurrentTime(targetTime);
     } 
   }, [videoRef, fps, currentFrameIndex, imageObj, setIsPlaying, setCurrentFrameIndex, setCurrentTime]);
+
+  // Backspace: remove the last point and show its frame again for re-marking (KEY-03).
+  const undoLastPointAndReturn = () => {
+    if (activeObjId === 'COM' || points.length === 0) return;
+    if (scrubberRef.current?.busy || videoRef.current?.seeking) return;
+    const removed = points[points.length - 1];
+    setPoints(prev => prev.slice(0, -1));
+    if (imageObj || !videoRef.current || !Number.isFinite(removed.time)) return;
+    pointReview.cancel();
+    autotracking.navigate();
+    videoRef.current.pause();
+    setIsPlaying(false);
+    const frameDuration = 1 / fps;
+    const index = Math.max(0, Math.floor(removed.time * fps + 0.001));
+    const targetTime = (index * frameDuration) + (frameDuration / 2);
+    if (targetTime <= videoRef.current.duration) {
+      setCurrentFrameIndex(index);
+      videoRef.current.currentTime = targetTime;
+      setCurrentTime(targetTime);
+    }
+  };
 
   const handleSeeked = useCallback(() => {
     if (imageObj) return;
@@ -1246,6 +1287,36 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
       }
     } 
   }, [videoRef, renderFrame, setDuration, setVideoDims, setZoom]);
+
+  const manualTrackingActive = isTracking && !!reticlePos && activeObjId !== 'COM' && !isCalibrating && !autotracking.enabled;
+  const handleShortcutKey = (event) => {
+    const shell = scrollContainerRef.current;
+    const blocked = showInputModal || !!shell?.closest?.('[inert]');
+    const shortcut = trackerShortcut(event, {
+      active: useStore.getState().viewMode === 'tracker' && !!(videoSrc || imageSrc) && !blocked,
+      video: !!videoSrc && !imageObj,
+      manual: manualTrackingActive,
+      automatic: !!autotracking.enabled,
+      canUndo: points.length > 0,
+      keyboardFocused: element => !!focusModalityRef.current?.byKeyboard(element),
+    });
+    if (!shortcut) return;
+    event.preventDefault();
+    shortcut.blur?.blur?.();
+    if (shortcut.action === 'record') recordReticlePoint();
+    else if (shortcut.action === 'undo') undoLastPointAndReturn();
+    else {
+      pointReview.cancel();
+      autotracking.navigate();
+      if (shortcut.action === 'next') stepForward();
+      else if (shortcut.action === 'previous') stepBackward();
+      else togglePlay();
+    }
+  };
+
+  useEffect(() => {
+    shortcutRef.current = handleShortcutKey;
+  });
 
   const changeZoom = (direction) => {
     const viewport = scrollContainerRef.current;
@@ -1314,6 +1385,27 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
         </button>
       )}
 
+      {/* Kept outside the scrolling viewport: focusing the input must not scroll a zoomed video. */}
+      {showInputModal && (
+        <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 border p-6 rounded-xl shadow-2xl z-50 w-80 text-center ${styles.panel}`}>
+          <h3 className={`text-lg font-bold mb-4 ${styles.text}`}>{t.setRealDistance}</h3>
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <input
+              type="number"
+              value={realDistanceInput}
+              onChange={(e) => setRealDistanceInput(e.target.value)}
+              className={`rounded px-3 py-2 w-24 text-center focus:outline-none focus:border-cyan-600 text-lg ${styles.input}`}
+              ref={focusDistanceInput}
+            />
+            <span className={`font-semibold text-lg ${styles.textSecondary}`}>m</span>
+          </div>
+          <div className="flex gap-3 justify-center">
+            <button onClick={cancelCalibrationLocal} className={`px-4 py-2 rounded transition ${styles.buttonSecondary}`}>{t.cancel}</button>
+            <button onClick={submitCalibrationLocal} className="px-4 py-2 rounded bg-green-600 hover:bg-green-500 text-white font-semibold transition">{t.save}</button>
+          </div>
+        </div>
+      )}
+
       <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start p-4 relative ${styles.workspaceBg}`}>
         {/* Snapping Mode Banner overlay */}
 
@@ -1328,26 +1420,6 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
         {dragState === 'calibration' && ( 
           <div className="fixed z-[100] w-12 h-12 rounded-full border-4 border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.8)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center" style={{ left: mousePos.x, top: mousePos.y }}> 
             <div className="w-1.5 h-1.5 bg-green-400 rounded-full" /> 
-          </div> 
-        )}
-        
-        {showInputModal && ( 
-          <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 border p-6 rounded-xl shadow-2xl z-50 w-80 text-center ${styles.panel}`}>
-            <h3 className={`text-lg font-bold mb-4 ${styles.text}`}>{t.setRealDistance}</h3>
-            <div className="flex items-center justify-center gap-2 mb-6"> 
-              <input 
-                type="number" 
-                value={realDistanceInput} 
-                onChange={(e) => setRealDistanceInput(e.target.value)} 
-                className={`rounded px-3 py-2 w-24 text-center focus:outline-none focus:border-cyan-600 text-lg ${styles.input}`}
-                autoFocus 
-              /> 
-              <span className={`font-semibold text-lg ${styles.textSecondary}`}>m</span> 
-            </div>
-            <div className="flex gap-3 justify-center"> 
-              <button onClick={cancelCalibrationLocal} className={`px-4 py-2 rounded transition ${styles.buttonSecondary}`}>{t.cancel}</button> 
-              <button onClick={submitCalibrationLocal} className="px-4 py-2 rounded bg-green-600 hover:bg-green-500 text-white font-semibold transition">{t.save}</button> 
-            </div> 
           </div> 
         )}
 
@@ -1404,14 +1476,14 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
           onClick={undoLastPoint} 
           disabled={points.length === 0 || activeObjId === 'COM'} 
           className={`p-3 rounded-full transition disabled:opacity-30 ${styles.buttonSecondary}`} 
-          title={t.undoLast} aria-label={t.undoLast}
+          title={`${t.undoLast} (${t.keyBackspace})`} aria-label={t.undoLast} aria-keyshortcuts="Backspace"
         > 
           <Undo2 size={20} /> 
         </button>
         {!imageSrc && <><div className={`flex items-center gap-4 px-6 py-2 rounded-full border ${isDark ? 'bg-slate-900/50 border-slate-700/50' : 'bg-slate-100 border-slate-200'} ${imageObj ? 'opacity-40 pointer-events-none' : ''}`}>
-          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepBackward();}} disabled={!!imageObj || scrubBusy} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={t.prevFrame} aria-label={t.prevFrame}> <SkipBack size={20} /> </button>
-          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); togglePlay();}} disabled={!!imageObj || scrubBusy} className="p-3 bg-cyan-400 hover:bg-cyan-300 text-slate-950 rounded-full transition shadow-lg shadow-cyan-900/20" title={t.playPause} aria-label={t.playPause}> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button>
-          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepForward();}} disabled={!!imageObj || scrubBusy} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={t.nextFrame} aria-label={t.nextFrame}> <SkipForward size={20} /> </button>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepBackward();}} disabled={!!imageObj || scrubBusy} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={`${t.prevFrame} (← ,)`} aria-label={t.prevFrame} aria-keyshortcuts="ArrowLeft ,"> <SkipBack size={20} /> </button>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); togglePlay();}} disabled={!!imageObj || scrubBusy} className="p-3 bg-cyan-400 hover:bg-cyan-300 text-slate-950 rounded-full transition shadow-lg shadow-cyan-900/20" title={`${t.playPause} (${t.keySpace})`} aria-label={t.playPause} aria-keyshortcuts="Space"> {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />} </button>
+          <button onClick={() => {pointReview.cancel(); autotracking.navigate(); stepForward();}} disabled={!!imageObj || scrubBusy} className={`p-2 rounded-full transition active:scale-90 active:bg-cyan-600 active:text-white ${styles.buttonSecondary}`} title={`${t.nextFrame} (→ .)`} aria-label={t.nextFrame} aria-keyshortcuts="ArrowRight ."> <SkipForward size={20} /> </button>
         </div>
         <div className="relative flex-1 min-w-40 max-w-xl mx-2 flex items-center gap-2">
           <span className={`text-xs font-mono w-12 text-right ${styles.textSecondary}`}>{formatTime(currentTime)}</span> 

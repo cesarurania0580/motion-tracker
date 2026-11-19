@@ -1,5 +1,22 @@
 # PhysTracker release records
 
+## 1.3.1 — 2026-11-18
+
+Owner instruction: "add 1.3.1 and merge" for pull request #9
+(https://github.com/cesarurania0580/motion-tracker/pull/9). Release includes the
+manual-tracking keyboard shortcuts, the scale-dialog fix for zoomed video and the
+5 px default point-location uncertainty. See CHANGELOG and specs 04, 20 and 22.
+
+Pre-release checks: 190 automated tests, lint and production build pass on the
+versioned files. Owner reported all three changes working in a local browser.
+The Netlify deploy preview for PR #9 built and returned HTTP 200 before the
+version commit. No iPad/Chromebook device matrix is recorded for this release.
+
+Rollback reference (production before this release, from the 1.3.0 deployment
+record): commit `075de99ea5e72c5ee02e7ced75758c07ebb2b913`, Netlify deploy
+`6afd11ecb37a5b9a09961104`. Restore that deploy through Netlify if needed;
+never reset the working tree to roll back.
+
 ## 1.3.0 — 2026-11-17
 
 Owner authorized preparation, PR preview verification, merge to main, and website
