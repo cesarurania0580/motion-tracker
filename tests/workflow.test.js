@@ -63,7 +63,7 @@ test('GW-08: local saving reports failure and recovery, skips transient changes,
     assert.equal(writes.length,count);
     useStore.getState().setVideoSrc('blob:new-video');
     assert.equal(useStore.getState().fpsConfirmed,false);
-    fail=true;useStore.getState().setUncertaintyPx(5);
+    fail=true;useStore.getState().setUncertaintyPx(7);
     assert.equal(useStore.getState().saveStatus,'error');
     assert.equal(writes.length,count);
     fail=false;useStore.getState().setUncertaintyPx(6);

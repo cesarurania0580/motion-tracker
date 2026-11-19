@@ -158,3 +158,27 @@ video completion; browser/device acceptance remains pending. See progress 2026-1
 - Zoom changes preserve points, axes, scale, timestamps and current video frame.
 - Check high-resolution landscape/portrait clips, scrolling, resize/orientation,
   images, and desktop/tablet controls. Browser acceptance remains an owner check.
+
+## Scale entry on a zoomed video — 2026-11-18
+
+Owner report: after zooming in to place the scale bar on a known length, pressing
+Enter Distance makes the video move or appear rescaled.
+
+- CAL-08: Opening, saving or cancelling the distance dialog must not change zoom
+  or the workspace scroll position. The dialog is positioned over the visible
+  workspace, outside the scrolling video viewport, and its field takes focus
+  without requesting a browser scroll. Zoom, scale endpoints and measurements
+  are unchanged by the dialog.
+
+Cause found by code inspection: the dialog was rendered inside the scrolling
+viewport and centred on its unscrolled area, with an autofocused field. With a
+zoomed, panned video the dialog was off-screen, so the browser scrolled the
+viewport to reveal the focused field. No zoom write occurs on this path; the
+"rescale" is not reproduced in code and remains to be confirmed in the browser.
+
+Evidence: tests/scaleDialog.test.js renders the real VideoCanvas. Two checks fail
+on the previous source and pass now (dialog outside the viewport; focus with
+preventScroll); a third guards zoom/endpoint preservation on Save. 178 tests,
+lint, build and whitespace checks pass. Owner browser checks pending: zoom in and
+pan on PC and iPad, place both handles, Enter Distance, type a value, Save and
+Cancel; the video must stay put. On iPad also check with the on-screen keyboard.

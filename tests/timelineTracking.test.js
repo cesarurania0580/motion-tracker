@@ -67,7 +67,7 @@ test('SCRUB-03/04: timeline completion synchronizes index; tracking then advance
 
 test('SCRUB-04: forward and backward buttons retain one-frame midpoint steps',()=>{
   const h=harness();try{
-    const button=key=>h.nodes().find(n=>n.type==='button' && n.props.title===TRANSLATIONS.en[key]);
+    const button=key=>h.nodes().find(n=>n.type==='button' && n.props['aria-label']===TRANSLATIONS.en[key]);
     button('nextFrame').props.onClick();assert.equal(h.video.currentTime,4.5/30);
     h.video.finish();h.render();button('prevFrame').props.onClick();
     assert.ok(Math.abs(h.video.currentTime-3.5/30)<1e-12);

@@ -394,7 +394,7 @@ export default function App() {
       if (!hasRestoredData) setZeroTime(true);
       useStore.getState().setIsTracking(false);
       setReticlePos(null);
-      if (!hasRestoredData) {setUncertaintyPx(10);setMeasurementBudget(emptyBudget());}
+      if (!hasRestoredData) {setUncertaintyPx(5);setMeasurementBudget(emptyBudget());}
       setDuration(0);
       setCurrentTime(0);
       setCurrentFrameIndex(0);

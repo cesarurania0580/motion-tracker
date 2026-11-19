@@ -76,3 +76,11 @@ chosen quantity; units and unknown bounds survive. Generic 2/4-column parsing st
 compatible. 135 tests, lint and main/trial builds pass; browser acceptance pending.
 Root cause: the export schema was expanded without extending the importer contract.
 The new end-to-end component-handler test guards that boundary.
+
+## Default point-location uncertainty — 2026-11-18
+
+Owner request: the starting point-location uncertainty is 5 px (was 10 px) for a
+new session, newly opened media and after resetting the experiment. It remains a starting estimate
+(MU-01). Saved values are respected: autosaved work and project files keep their
+stored uncertainty, and a project file without the field still loads as 10 px,
+the value in effect when such files were written.
