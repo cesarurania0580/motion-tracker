@@ -2,6 +2,7 @@ import RangeControl from './RangeControl';
 import {createTimelineScrubber} from '../utils/timelineScrubber';
 import {SPECTRUM_PLACEMENT_TEXT} from '../utils/spectrumWorkflow';
 import {mediaFitZoom, nextMediaZoom} from '../utils/mediaFit';
+import {visibleMediaRect, viewCenter, scrollToCenter, setMediaViewProvider, reticleStart, scaleBarInView, offscreenTools} from '../utils/mediaView';
 import {dispersionAxis, referencePoints, anchorCalibration, sampleSpectrum, validCalibration} from '../utils/spectroscopy';
 import {GUIDE_TEXT} from '../utils/guideText';
 import {trackerShortcut, createFocusModality} from '../utils/trackerShortcuts';
@@ -13,8 +14,13 @@ import {
 } from '../utils/physicsMath';
 import { 
   Undo2, SkipBack, Play, Pause, SkipForward, ZoomOut, ZoomIn, 
-  Maximize, Trash2, CheckCircle2
+  Maximize, Trash2, CheckCircle2, ArrowUp
 } from 'lucide-react';
+
+// Where an off-screen pointer sits, by direction (-1 left/up, 0 middle, 1 right/down).
+// The bottom row clears the transport bar and the Enter Distance button.
+const OFFSCREEN_X = {'-1': 'left-3', '0': 'left-1/2 -translate-x-1/2', '1': 'right-3'};
+const OFFSCREEN_Y = {'-1': 'top-3', '0': 'top-1/2 -translate-y-1/2', '1': 'bottom-44'};
 
 // --- SUB-COMPONENT: PURE VIDEO PLAYER ---
 const PureVideoPlayer = React.memo(({ videoRef, src, onLoadedMetadata, onLoadedData, onEnded, onError, onTimeUpdate, onSeeked }) => {
@@ -768,11 +774,38 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
     }
   }, [videoRef, videoSrc]);
 
+  // The part of the media currently on screen, in media pixels (null when hidden).
+  const measureView = useCallback(() => {
+    const viewport = scrollContainerRef.current, canvas = canvasRef.current;
+    if (!viewport || !canvas) return null;
+    const state = useStore.getState();
+    return visibleMediaRect(viewport.getBoundingClientRect(), canvas.getBoundingClientRect(), state.zoom, state.videoDims);
+  }, []);
+
+  useEffect(() => {
+    setMediaViewProvider(measureView);
+    return () => setMediaViewProvider(null);
+  }, [measureView]);
+
+  // The reticle starts on the last marked position when that is on screen,
+  // otherwise in the middle of what the student is looking at.
   useEffect(() => {
     if (isTracking && !reticlePos && videoDims.w > 0) {
-      setReticlePos({ x: videoDims.w / 2, y: videoDims.h / 2 });
+      setReticlePos(reticleStart(measureView(), videoDims, points, videoRef.current?.currentTime ?? 0));
     }
-  }, [isTracking, videoDims, reticlePos, setReticlePos]);
+  }, [isTracking, videoDims, reticlePos, setReticlePos, measureView, points, videoRef]);
+
+  // After a zoom step, scroll so the point that was centred stays centred.
+  const zoomAnchorRef = useRef(null);
+  useEffect(() => {
+    const anchor = zoomAnchorRef.current;
+    zoomAnchorRef.current = null;
+    const viewport = scrollContainerRef.current, canvas = canvasRef.current;
+    if (!anchor || !viewport || !canvas) return;
+    const {dx, dy} = scrollToCenter(anchor, viewport.getBoundingClientRect(), canvas.getBoundingClientRect(), zoom);
+    viewport.scrollLeft += dx;
+    viewport.scrollTop += dy;
+  }, [zoom]);
 
   useEffect(() => {
     if (imageObj && videoDims.w > 0 && scrollContainerRef.current) {
@@ -1273,6 +1306,57 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   }, [videoRef, renderFrame, setDuration, setVideoDims, setZoom]);
 
   const manualTrackingActive = isTracking && !!reticlePos && activeObjId !== 'COM' && !isCalibrating && !autotracking.enabled;
+
+  // Tools in use that have scrolled out of view get a pointer at the edge of the
+  // video, so nobody has to zoom out to find them.
+  const [offscreen, setOffscreen] = useState([]);
+  const refreshOffscreenRef = useRef(() => {});
+  const offscreenKeyRef = useRef('');
+  const refreshOffscreen = () => {
+    const idle = !dragState && !showInputModal;
+    const next = offscreenTools({
+      view: measureView(),
+      reticle: idle && manualTrackingActive ? reticlePos : null,
+      scale: idle && isCalibrating ? calibrationPoints : null,
+    });
+    // Re-render only when a tool enters or leaves the view, not on every scroll event.
+    const key = next.map(tool => `${tool.id}:${tool.h}:${tool.v}`).join('|');
+    if (key === offscreenKeyRef.current) return;
+    offscreenKeyRef.current = key;
+    setOffscreen(next);
+  };
+  useEffect(() => {
+    refreshOffscreenRef.current = refreshOffscreen;
+    refreshOffscreen();
+  });
+  useEffect(() => {
+    const onResize = () => refreshOffscreenRef.current();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const offscreenPoint = (id) => id === 'reticle' ? reticlePos
+    : id === 'scale' ? {x: (calibrationPoints[0].x + calibrationPoints[1].x) / 2, y: (calibrationPoints[0].y + calibrationPoints[1].y) / 2}
+    : calibrationPoints[id === 'scale0' ? 0 : 1];
+  const goToOffscreen = (id) => {
+    const viewport = scrollContainerRef.current, canvas = canvasRef.current, point = offscreenPoint(id);
+    if (!viewport || !canvas || !point) return;
+    const {dx, dy} = scrollToCenter(point, viewport.getBoundingClientRect(), canvas.getBoundingClientRect(), zoom);
+    viewport.scrollLeft += dx;
+    viewport.scrollTop += dy;
+  };
+  const bringOffscreenHere = (id) => {
+    const view = measureView();
+    if (!view) return;
+    if (id === 'reticle') setReticlePos(viewCenter(view));
+    else if (id === 'scale') setCalibrationPoints(scaleBarInView(view, videoDims));
+    else setCalibrationPoints(calibrationPoints.map((point, index) => index === (id === 'scale0' ? 0 : 1) ? viewCenter(view) : point));
+  };
+  const offscreenLabel = (id) => id === 'reticle' ? t.offscreenReticle : id === 'scale' ? t.offscreenScale : t.offscreenScaleEnd;
+  const offscreenGroups = Object.values(offscreen.reduce((groups, tool) => {
+    (groups[`${tool.h}:${tool.v}`] ??= {h: tool.h, v: tool.v, tools: []}).tools.push(tool);
+    return groups;
+  }, {}));
   const handleShortcutKey = (event) => {
     const shell = scrollContainerRef.current;
     const blocked = showInputModal || !!shell?.closest?.('[inert]');
@@ -1306,7 +1390,13 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
     const viewport = scrollContainerRef.current;
     if (!viewport) return;
     const fit = mediaFitZoom(videoDims.w, videoDims.h, viewport.clientWidth, viewport.clientHeight);
-    setZoom(current => nextMediaZoom(current, direction, fit));
+    const view = measureView();
+    setZoom(current => {
+      const next = nextMediaZoom(current, direction, fit);
+      // Only a real zoom step re-centres; Fit and a capped step leave scrolling alone.
+      zoomAnchorRef.current = direction !== 'fit' && next !== current && view ? viewCenter(view) : null;
+      return next;
+    });
     if (direction === 'fit' && fit !== null) {
       viewport.scrollLeft = 0;
       viewport.scrollTop = 0;
@@ -1390,7 +1480,22 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
         </div>
       )}
 
-      <div ref={scrollContainerRef} className={`flex-1 overflow-auto flex items-start p-4 relative ${styles.workspaceBg}`}>
+      {/* Pointers to tools that are outside the view. Outside the scrolling viewport so they stay at its edges. */}
+      {offscreenGroups.map(group => (
+        <div key={`${group.h}:${group.v}`} className={`absolute z-40 flex flex-col gap-2 pointer-events-none ${OFFSCREEN_X[group.h]} ${OFFSCREEN_Y[group.v]}`}>
+          {group.tools.map(tool => (
+            <div key={tool.id} role="group" aria-label={`${offscreenLabel(tool.id)} ${t.offscreenHint}`} data-offscreen={tool.id}
+              className="pointer-events-auto flex items-center gap-2 rounded-full border border-green-400 bg-slate-900/95 pl-3 pr-1.5 py-1.5 text-xs text-white shadow-lg">
+              <ArrowUp size={16} aria-hidden="true" className="shrink-0 text-green-400" style={{transform: `rotate(${Math.round(Math.atan2(tool.h, -tool.v) * 180 / Math.PI)}deg)`}} />
+              <span className="font-semibold whitespace-nowrap">{offscreenLabel(tool.id)}</span>
+              <button type="button" onClick={() => bringOffscreenHere(tool.id)} className="min-h-9 rounded-full bg-green-600 px-3 font-semibold whitespace-nowrap hover:bg-green-500">{t.bringHere}</button>
+              <button type="button" onClick={() => goToOffscreen(tool.id)} className="min-h-9 rounded-full border border-slate-500 px-3 whitespace-nowrap hover:bg-slate-700">{t.goToIt}</button>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      <div ref={scrollContainerRef} onScroll={() => refreshOffscreenRef.current()} className={`flex-1 overflow-auto flex items-start p-4 relative ${styles.workspaceBg}`}>
         {/* Snapping Mode Banner overlay */}
 
         

@@ -2,6 +2,7 @@ import {emptyBudget,cleanBudget} from '../utils/measurementUncertainty.js';
 import {initialSamplingLine} from '../utils/spectrumWorkflow.js';
 import {anchorCalibration} from '../utils/spectroscopy.js';
 import { create } from 'zustand';
+import {scaleBarInView, currentMediaView} from '../utils/mediaView.js';
 import {readStartup, readRecovery, writeAutosave, clearWork, hasWork} from '../utils/sessionPersistence.js';
 
 const validDistance = value => Number.isFinite(value) && value > 0;
@@ -246,13 +247,13 @@ const useStore = create((set, get) => ({
   startScaleEdit: () => {
     const state=get();
     if(!state.videoSrc && !state.imageSrc)return;
-    const w=state.videoDims.w || 600, h=state.videoDims.h || 400;
     const editing=Boolean(state.pixelsPerMeter) && state.calibrationPoints.length===2;
     set({
       isCalibrating:true, isSettingOrigin:false, isTracking:false, reticlePos:null,
       isScaleVisible:true, showInputModal:false, activeClickTarget:null,
       scaleEditBackup:editing?{calibrationPoints:state.calibrationPoints}:null,
-      calibrationPoints:editing?state.calibrationPoints:[{x:w*0.4,y:h*0.5},{x:w*0.6,y:h*0.5}],
+      // A new bar appears inside the part of the media the student is looking at.
+      calibrationPoints:editing?state.calibrationPoints:scaleBarInView(currentMediaView(),state.videoDims),
       ...(validDistance(state.scaleDistance)?{realDistanceInput:String(state.scaleDistance)}:{}),
     });
   },

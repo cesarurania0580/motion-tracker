@@ -17,7 +17,7 @@ function harness(){
   const schedule=fn=>{tasks.set(++id,fn);return id;};
   vm.runInNewContext(bundle,{require:n=>n==='react'?hooks:n==='react/jsx-runtime'?runtime:require(n),module,exports:module.exports,
     console,setTimeout,clearTimeout,requestAnimationFrame:schedule,cancelAnimationFrame:id=>tasks.delete(id),
-    localStorage:{getItem:()=>null,setItem(){}},window:{},document:{}});
+    localStorage:{getItem:()=>null,setItem(){}},window:{addEventListener(){},removeEventListener(){}},document:{}});
   class Video extends EventTarget {
     time=3.5/30;duration=20;paused=true;seeking=false;readyState=2;writes=[];
     get currentTime(){return this.time;}
