@@ -122,7 +122,6 @@ export default function App() {
   const setShowInputModal = useStore(state => state.setShowInputModal);
   const realDistanceInput = useStore(state => state.realDistanceInput);
   const setRealDistanceInput = useStore(state => state.setRealDistanceInput);
-  const isScaleVisible = useStore(state => state.isScaleVisible);
   const setIsScaleVisible = useStore(state => state.setIsScaleVisible);
 
   const origin = useStore(state => state.origin);
@@ -143,6 +142,7 @@ export default function App() {
   const setUncertaintyPx = useStore(state => state.setUncertaintyPx);
 
   const hasRestoredData = useStore(state => state.hasRestoredData);
+  const recoverySavedAt = useStore(state => state.recoverySavedAt);
   const setHasRestoredData = useStore(state => state.setHasRestoredData);
 
   const plotX = useStore(state => state.plotX);
@@ -207,31 +207,11 @@ export default function App() {
     useStore.setState({ isSettingOrigin: true, isCalibrating: false, isTracking: false, showInputModal: false, activeClickTarget: null });
   };
 
+  // The same button sets a new scale or corrects the existing one.
   const handleScaleButtonClick = () => {
     if (!videoSrc && !imageSrc) return;
-    if (pixelsPerMeter) {
-      setIsScaleVisible(!isScaleVisible);
-    } else {
-      if (!isCalibrating) {
-        setIsCalibrating(true);
-        setIsSettingOrigin(false);
-        setIsScaleVisible(true);
-        useStore.getState().setIsTracking(false);
-        setReticlePos(null);
-        const w = videoDims.w || 600;
-        const h = videoDims.h || 400;
-        setCalibrationPoints([{ x: w * 0.4, y: h * 0.5 }, { x: w * 0.6, y: h * 0.5 }]);
-      } else {
-        setShowInputModal(true);
-      }
-    }
-  };
-
-  const resetScale = () => { 
-    setPixelsPerMeter(null); 
-    setCalibrationPoints([]); 
-    setIsCalibrating(false); 
-    setIsScaleVisible(true); 
+    if (isCalibrating) setShowInputModal(true);
+    else useStore.getState().startScaleEdit();
   };
 
   const saveProject = () => {
@@ -241,6 +221,7 @@ export default function App() {
         activeObjId,
         calibrationPoints,
         pixelsPerMeter,
+        scaleDistance: useStore.getState().scaleDistance,
         origin,
         originAngle,
         zeroTime,
@@ -287,7 +268,7 @@ export default function App() {
         if (!pointLists.every(list => Array.isArray(list) && list.every(p => p && ['x','y','time'].every(k => Number.isFinite(p[k]))))) throw new Error('Invalid measurements');
         cancelTiming.current();
         setTiming({status:'unknown',fps:null});
-        useStore.setState({isTracking:false,isCalibrating:false,isSettingOrigin:false,showInputModal:false,activeClickTarget:null,error:null,spectralData:[],videoDims:{w:0,h:0},fpsConfirmed:false});
+        useStore.setState({isTracking:false,isCalibrating:false,scaleEditBackup:null,isSettingOrigin:false,showInputModal:false,activeClickTarget:null,error:null,spectralData:[],videoDims:{w:0,h:0},fpsConfirmed:false});
         
         if (data.objects) {
           const migratedObjects = data.objects.map(o => ({ ...o, mass: o.mass !== undefined ? o.mass : 1 }));
@@ -303,6 +284,8 @@ export default function App() {
 
         setCalibrationPoints(data.calibrationPoints || []);
         setPixelsPerMeter(data.pixelsPerMeter || null);
+        useStore.getState().setScaleDistance(data.scaleDistance);
+        if (Number.isFinite(data.scaleDistance) && data.scaleDistance > 0) setRealDistanceInput(String(data.scaleDistance));
         setOrigin(data.origin || null);
         useStore.setState({axesConfirmed:!!data.origin});
         setOriginAngle(data.originAngle || 0);
@@ -375,6 +358,7 @@ export default function App() {
           ]);
           setCalibrationPoints([]);
           setPixelsPerMeter(null);
+          useStore.setState({scaleDistance:null,scaleEditBackup:null});
           setOrigin(null);
           useStore.setState({axesConfirmed:false});
           setOriginAngle(0);
@@ -644,7 +628,6 @@ export default function App() {
               pointReview={pointReview}
               positionData={positionData}
               uncertaintyMeters={uncertaintyMeters}
-              resetScale={resetScale}
               downloadCSV={downloadCSV}
               points={points}
             />
@@ -714,7 +697,7 @@ export default function App() {
       )}
 
     </div>
-    {welcomeOpen && <WelcomeDialog onGraphing={()=>{setWelcomeDismissed(true);useStore.getState().setViewMode('analysis');}} onClose={()=>setWelcomeDismissed(true)} language={language} dark={isDark} restored={hasRestoredData} error={projectError || mediaError} loading={mediaLoading && !mediaError}
+    {welcomeOpen && <WelcomeDialog onGraphing={()=>{setWelcomeDismissed(true);useStore.getState().setViewMode('analysis');}} onClose={()=>setWelcomeDismissed(true)} language={language} dark={isDark} restored={hasRestoredData} recoverySavedAt={recoverySavedAt} onRecover={()=>{setProjectError(null);useStore.getState().recoverPreviousWork();}} error={projectError || mediaError} loading={mediaLoading && !mediaError}
       onMedia={e=>{
         if(e.target.files[0]){
           setProjectError(null);

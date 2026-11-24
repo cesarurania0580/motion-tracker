@@ -53,6 +53,9 @@ export default function Sidebar({
   const origin = useStore((state) => state.origin);
   const objects = useStore((state) => state.objects);
   const pixelsPerMeter = useStore((state) => state.pixelsPerMeter);
+  const scaleDistance = useStore((state) => state.scaleDistance);
+  const isScaleVisible = useStore((state) => state.isScaleVisible);
+  const isCalibrating = useStore((state) => state.isCalibrating);
   const zeroTime = useStore((state) => state.zeroTime);
   const uncertaintyPx = useStore((state) => state.uncertaintyPx);
   const tapeMeasure = useStore((state) => state.tapeMeasure);
@@ -228,8 +231,19 @@ export default function Sidebar({
             <span>{t.originLabel}: {origin ? `(${Math.round(origin.x)}, ${Math.round(origin.y)})` : t.notSet}</span>
           </div>
           <div className={`text-xs flex items-center gap-2 ${styles.textSecondary}`}>
-            <span>{t.scaleLabel}: {pixelsPerMeter ? `${Math.round(pixelsPerMeter)} px/m` : t.notSet}</span>
+            <span>{t.scaleLabel}: {pixelsPerMeter ? `${Math.round(pixelsPerMeter)} px/m` : t.notSet}{pixelsPerMeter && scaleDistance ? ` (${scaleDistance} m ${t.scaleDistanceLabel})` : ''}</span>
           </div>
+          {pixelsPerMeter && !isCalibrating && <div className="flex flex-wrap gap-1" aria-label={t.scaleLabel}>
+            <button type="button" onClick={()=>useStore.getState().startScaleEdit()} className={`text-xs flex items-center gap-1 px-2 py-1 rounded border transition ${styles.buttonSecondary}`}>
+              <Ruler size={12} aria-hidden="true"/>{t.editScale}
+            </button>
+            <button type="button" aria-pressed={!isScaleVisible} onClick={()=>useStore.getState().setIsScaleVisible(!isScaleVisible)} className={`text-xs px-2 py-1 rounded border transition ${styles.buttonSecondary}`}>
+              {isScaleVisible ? t.hideScale : t.showScale}
+            </button>
+            <button type="button" onClick={()=>{if(confirm(t.resetScaleConfirm))useStore.getState().resetScale();}} className={`text-xs flex items-center gap-1 px-2 py-1 rounded border transition text-red-500 ${styles.buttonSecondary}`}>
+              <Trash2 size={12} aria-hidden="true"/>{t.resetScale}
+            </button>
+          </div>}
           <button onClick={() => setZeroTime(!zeroTime)} className={`text-xs flex items-center gap-2 px-2 py-1 rounded border transition ${zeroTime ? 'bg-cyan-500/15 border-cyan-600 text-cyan-600' : styles.buttonSecondary}`} title={zeroTime ? t.timeStart : t.videoTime}>
             <Clock size={12} />
             <span>{zeroTime ? t.timeStart : t.videoTime}</span>

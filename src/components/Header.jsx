@@ -14,7 +14,7 @@ export default function Header({autotracking, handleObjectSwitch, handleOriginBu
   handleScaleButtonClick, handleFileUpload, saveProject, loadProject, clearProject}) {
   const s=useStore(useShallow(state=>Object.fromEntries([
     'theme','language','viewMode','activeObjId','isSettingOrigin','isCalibrating','origin',
-    'pixelsPerMeter','isScaleVisible','hasRestoredData','videoSrc','imageSrc','logoError',
+    'pixelsPerMeter','hasRestoredData','videoSrc','imageSrc','logoError',
     'fps','fpsConfirmed','saveStatus','videoDims','imageObj','duration','error','lineProfile',
     'spectralData','objects','isTracking','axesConfirmed','wavelengthCalibration',
   ].map(key=>[key,state[key]]))));
@@ -67,7 +67,7 @@ export default function Header({autotracking, handleObjectSwitch, handleOriginBu
       <div aria-label={g.title} className="flex flex-wrap items-center gap-1">
         {s.viewMode==='tracker' && <>
         {button('media',Upload,g.media,s.hasRestoredData?g.restore:g.mediaHelp,()=>mediaInput.current.click())}
-        {button('scale',Ruler,s.isCalibrating?g.doneDistance:s.pixelsPerMeter?(s.isScaleVisible?t.hideScale:t.showScale):g.scale,g.scaleHelp,()=>{store.setViewMode('tracker');handleScaleButtonClick();},{active:s.isCalibrating,blocked:!flow.ready,reason:g.needMedia})}
+        {button('scale',Ruler,s.isCalibrating?g.doneDistance:s.pixelsPerMeter?t.editScale:g.scale,g.scaleHelp,()=>{store.setViewMode('tracker');handleScaleButtonClick();},{active:s.isCalibrating,blocked:!flow.ready,reason:g.needMedia})}
         {button('axes',Move,g.axes,g.axesHelp,()=>{store.setViewMode('tracker');handleOriginButtonClick();},{active:s.isSettingOrigin,blocked:!flow.ready,reason:g.needMedia})}
         {!s.imageSrc && <TrackingModeMenu tracking={autotracking} renderTrigger={({label,disabled,open,toggle,mode})=>
           <ToolbarButton {...defaults} id="tracking-mode-trigger" icon={Target} label={label}

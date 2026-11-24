@@ -17,8 +17,8 @@ test('Spectrum workflow: English and Spanish keys match',()=>{
   assert.deepEqual(Object.keys(SPECTRUM_WORKFLOW_TEXT.en),Object.keys(SPECTRUM_WORKFLOW_TEXT.es));
 });
 test('Spectrum workflow: step navigation cancels unfinished placement and preserves data/calibration',async()=>{
-  const storage=globalThis.localStorage,writes=[];
-  globalThis.localStorage={getItem:()=>null,setItem:(_,value)=>writes.push(JSON.parse(value))};
+  const storage=globalThis.sessionStorage,writes=[];
+  globalThis.sessionStorage={getItem:()=>null,setItem:(_,value)=>writes.push(JSON.parse(value))};
   const {useStore}=await import('../src/store/useStore.js');
   const before=useStore.getState();
   try {
@@ -34,7 +34,7 @@ test('Spectrum workflow: step navigation cancels unfinished placement and preser
     assert.equal(useStore.getState().lineProfile,original.lineProfile);
     assert.equal(useStore.getState().wavelengthCalibration,original.wavelengthCalibration);
     assert.ok(writes.every(data=>!('spectrumStep' in data) && !('spectrumUsePixels' in data)));
-  } finally {useStore.setState(before,true);globalThis.localStorage=storage;}
+  } finally {useStore.setState(before,true);globalThis.sessionStorage=storage;}
 });
 
 
@@ -47,8 +47,8 @@ test('Calibration-first workflow: line starts inside native image and new labels
 });
 
 test('Calibration-first workflow: opening sampling creates once and preserves adjustments/calibration',async()=>{
-  const storage=globalThis.localStorage;
-  globalThis.localStorage={getItem:()=>null,setItem:()=>{}};
+  const storage=globalThis.sessionStorage;
+  globalThis.sessionStorage={getItem:()=>null,setItem:()=>{}};
   const {useStore}=await import('../src/store/useStore.js');
   const before=useStore.getState();
   try {
@@ -65,5 +65,5 @@ test('Calibration-first workflow: opening sampling creates once and preserves ad
     assert.equal(useStore.getState().lineProfile,modified);
     assert.equal(useStore.getState().wavelengthCalibration,c);
     assert.equal(useStore.getState().spectrumInteractionVersion,version+1);
-  } finally {useStore.setState(before,true);globalThis.localStorage=storage;}
+  } finally {useStore.setState(before,true);globalThis.sessionStorage=storage;}
 });

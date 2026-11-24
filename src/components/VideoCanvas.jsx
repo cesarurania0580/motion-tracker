@@ -87,9 +87,7 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   const showGuidelines = useStore((state) => state.showGuidelines);
   const setSpectralData = useStore((state) => state.setSpectralData);
   const pixelsPerMeter = useStore((state) => state.pixelsPerMeter);
-  const setPixelsPerMeter = useStore((state) => state.setPixelsPerMeter);
   const isCalibrating = useStore((state) => state.isCalibrating);
-  const setIsCalibrating = useStore((state) => state.setIsCalibrating);
   const calibrationPoints = useStore((state) => state.calibrationPoints);
   const setCalibrationPoints = useStore((state) => state.setCalibrationPoints);
   const showInputModal = useStore((state) => state.showInputModal);
@@ -97,7 +95,6 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   const realDistanceInput = useStore((state) => state.realDistanceInput);
   const setRealDistanceInput = useStore((state) => state.setRealDistanceInput);
   const isScaleVisible = useStore((state) => state.isScaleVisible);
-  const setIsScaleVisible = useStore((state) => state.setIsScaleVisible);
   const origin = useStore((state) => state.origin);
   const setOrigin = useStore((state) => state.setOrigin);
   const originAngle = useStore((state) => state.originAngle);
@@ -945,7 +942,8 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
     }
 
     // 3. Check Calibration Points
-    if (!isInteractiveTarget && (isCalibrating || (isScaleVisible && calibrationPoints.length > 0))) {
+    // Endpoints move only while calibrating, so the drawn line always matches pixelsPerMeter.
+    if (!isInteractiveTarget && isCalibrating) {
       for (let i = 0; i < calibrationPoints.length; i++) {
         const p = calibrationPoints[i];
         const dist = Math.sqrt(Math.pow(x - p.x, 2) + Math.pow(y - p.y, 2));
@@ -1144,25 +1142,11 @@ export default function VideoCanvas({ points, videoRef, autotracking, pointRevie
   }, []);
 
   const submitCalibrationLocal = () => {
-    const meters = parseFloat(realDistanceInput);
-    if (!isNaN(meters) && meters > 0) {
-      const p1 = calibrationPoints[0];
-      const p2 = calibrationPoints[1];
-      const distPx = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-      setPixelsPerMeter(distPx / meters);
-      setIsCalibrating(false);
-      setShowInputModal(false);
-      setIsScaleVisible(true);
-    } else {
-      alert("Please enter a valid number");
-    }
+    if (!useStore.getState().applyScale(realDistanceInput)) alert(t.invalidDistance);
   };
 
-  const cancelCalibrationLocal = () => { 
-    setCalibrationPoints([]); 
-    setIsCalibrating(false); 
-    setShowInputModal(false); 
-  };
+  // Cancelling an edit restores the previous endpoints; cancelling a new scale clears them.
+  const cancelCalibrationLocal = () => useStore.getState().cancelScaleEdit();
 
   const undoLastPoint = () => setPoints(prev => prev.slice(0, -1));
 

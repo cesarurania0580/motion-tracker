@@ -4,9 +4,9 @@ import {TRANSLATIONS} from '../src/utils/translations.js';
 
 function reviewTest(name,run) {
   test(name,async()=>{
-    const storage=globalThis.localStorage;
+    const storage=globalThis.sessionStorage;
     const writes=[];
-    globalThis.localStorage={getItem:()=>null,removeItem:()=>{},setItem:(_,value)=>writes.push(JSON.parse(value))};
+    globalThis.sessionStorage={getItem:()=>null,removeItem:()=>{},setItem:(_,value)=>writes.push(JSON.parse(value))};
     const {useStore}=await import('../src/store/useStore.js');
     const previous=useStore.getState();
     try {
@@ -15,7 +15,7 @@ function reviewTest(name,run) {
         {id:'B',mass:3,points:[{id:0,time:1,x:100,y:200}]}
       ],activeObjId:'A',pointEditHistory:{},pixelsPerMeter:100,origin:{x:1,y:2},originAngle:.4});
       await run(useStore,writes);
-    } finally {useStore.setState(previous,true);globalThis.localStorage=storage;}
+    } finally {useStore.setState(previous,true);globalThis.sessionStorage=storage;}
   });
 }
 
