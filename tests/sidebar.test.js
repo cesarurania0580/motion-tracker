@@ -6,9 +6,9 @@ import assert from 'node:assert/strict';
 import {SIDEBAR_TEXT} from '../src/utils/sidebarText.js';
 
 test('SIDE-04/13: focused navigation preserves data, settings and undo; cancels hidden spectral placement',async()=>{
-  const storage=globalThis.localStorage;
+  const storage=globalThis.sessionStorage;
   const writes=[];
-  globalThis.localStorage={getItem:()=>null,setItem:(_,value)=>writes.push(JSON.parse(value))};
+  globalThis.sessionStorage={getItem:()=>null,setItem:(_,value)=>writes.push(JSON.parse(value))};
   const {useStore}=await import('../src/store/useStore.js');
   const before=useStore.getState();
   try {
@@ -32,7 +32,7 @@ test('SIDE-04/13: focused navigation preserves data, settings and undo; cancels 
     assert.equal(useStore.getState().sidebarTab,'controls');
     s.navigateSidebar('tools','fine');
     assert.equal(useStore.getState().sidebarTab,'controls');
-  } finally {useStore.setState(before,true);globalThis.localStorage=storage;}
+  } finally {useStore.setState(before,true);globalThis.sessionStorage=storage;}
 });
 
 test('SIDE-15: navigation labels have English and Spanish parity',()=>{
@@ -54,8 +54,8 @@ test('SIDE-02/07/09/14: rendered views are exclusive and running Pause is availa
       return renderToStaticMarkup(<Sidebar autotracking={{enabled:true,status,options:DETAIL_OPTIONS}} pointReview={{}} positionData={[]} uncertaintyMeters={0} points={[]}/>);
     }
   `,resolveDir:fileURLToPath(new URL('../',import.meta.url)),loader:'jsx'},bundle:true,write:false,format:'cjs',platform:'node',jsx:'automatic',packages:'external',logLevel:'silent'});
-  const storage=globalThis.localStorage;
-  globalThis.localStorage={getItem:()=>null,setItem:()=>{}};
+  const storage=globalThis.sessionStorage;
+  globalThis.sessionStorage={getItem:()=>null,setItem:()=>{}};
   try {
     const module={exports:{}};
     runInThisContext(`(function(require,module,exports){${result.outputFiles[0].text}\n})`,{filename:'sidebar-render.cjs'})(createRequire(import.meta.url),module,module.exports);
@@ -123,13 +123,13 @@ test('SIDE-02/07/09/14: rendered views are exclusive and running Pause is availa
       assert.equal((running.match(/>Pause<\/button>/g)||[]).length,1,`${tab}/${view}`);
       assert.equal((running.match(/overflow-auto/g)||[]).length,1);
     }
-  } finally {globalThis.localStorage=storage;}
+  } finally {globalThis.sessionStorage=storage;}
 });
 
 
 test('SIDE-16: new video opens settings unconfirmed; confirmation and tab choice survive ordinary updates',async()=>{
-  const storage=globalThis.localStorage;
-  globalThis.localStorage={getItem:()=>null,setItem:()=>{}};
+  const storage=globalThis.sessionStorage;
+  globalThis.sessionStorage={getItem:()=>null,setItem:()=>{}};
   const {useStore}=await import('../src/store/useStore.js');
   const before=useStore.getState();
   try {
@@ -155,5 +155,5 @@ test('SIDE-16: new video opens settings unconfirmed; confirmation and tab choice
     s.setVideoSrc(null);
     s.setImageSrc('still-image');
     assert.equal(useStore.getState().sidebarTab,'tools');
-  } finally {useStore.setState(before,true);globalThis.localStorage=storage;}
+  } finally {useStore.setState(before,true);globalThis.sessionStorage=storage;}
 });

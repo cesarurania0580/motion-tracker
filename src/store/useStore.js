@@ -2,10 +2,11 @@ import {emptyBudget,cleanBudget} from '../utils/measurementUncertainty.js';
 import {initialSamplingLine} from '../utils/spectrumWorkflow.js';
 import {anchorCalibration} from '../utils/spectroscopy.js';
 import { create } from 'zustand';
+import {readStartup, readRecovery, writeAutosave, clearWork, hasWork} from '../utils/sessionPersistence.js';
 
-// Attempt to restore saved state from localStorage
-const getInitialState = () => {
-  const defaultState = {
+const validDistance = value => Number.isFinite(value) && value > 0;
+
+const createDefaultState = () => ({
     // UI/General Configuration
     language: 'en',
     theme: 'dark',
@@ -35,6 +36,8 @@ const getInitialState = () => {
     isCalibrating: false,
     calibrationPoints: [],
     pixelsPerMeter: null,
+    scaleDistance: null,
+    scaleEditBackup: null,
     showInputModal: false,
     realDistanceInput: "1.0",
     isScaleVisible: true,
@@ -89,67 +92,81 @@ const getInitialState = () => {
     activeReferenceOverlays: { h2: false, he: false, hg: false },
     activeClickTarget: null,
     showGuidelines: true,
-  };
+    recoverySavedAt: null,
+});
 
-  try {
-    const savedData = localStorage.getItem('physTracker_autosave');
-    if (savedData) {
-      const data = JSON.parse(savedData);
-      const restored = { ...defaultState };
+// Fields written by autosave. Navigation, pointer and status fields stay out.
+const PERSISTED_KEYS = ['objects','activeObjId','calibrationPoints','pixelsPerMeter','scaleDistance','origin',
+  'originAngle','zeroTime','fitModel','uncertaintyPx','measurementBudget','viewMode','language','fps','cropStart',
+  'cropEnd','protractor','tapeMeasure','showVelocityVectors','showAccelerationVectors','vectorScale','lineProfile',
+  'wavelengthCalibration','spectralMode','activeReferenceOverlays','showGuidelines'];
+// Recovering work keeps the student's current language and the welcome navigation.
+const RECOVERED_KEYS = [...PERSISTED_KEYS.filter(key => key !== 'viewMode' && key !== 'language'),
+  'axesConfirmed','realDistanceInput','hasRestoredData'];
 
-      // Migrate / restore objects
-      if (data.objects) {
-        restored.objects = data.objects.map(o => ({
-          ...o,
-          mass: o.mass !== undefined ? o.mass : 1
-        }));
-        if (data.activeObjId) restored.activeObjId = data.activeObjId;
-      } else if (data.points) {
-        restored.objects = [
-          { id: 'A', name: 'Object A', color: '#ef4444', points: data.points, mass: 1 },
-          { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
-        ];
-      }
+// Builds state from a saved autosave, tolerating older save shapes.
+const applySaved = (base, data) => {
+  const restored = { ...base };
 
-      // Check if we restored any tracking data to set hasRestoredData
-      const hasPoints = (data.objects && data.objects.some(o => o.points.length > 0)) || (data.points && data.points.length > 0);
-      if (hasPoints || data.origin || data.lineProfile || data.pixelsPerMeter || data.wavelengthCalibration) {
-        restored.hasRestoredData = true;
-      }
-
-      // Restore other fields if present
-      if (data.calibrationPoints) restored.calibrationPoints = data.calibrationPoints;
-      if (data.pixelsPerMeter) restored.pixelsPerMeter = data.pixelsPerMeter;
-      if (data.origin) {restored.origin = data.origin; restored.axesConfirmed = true;}
-      if (data.originAngle) restored.originAngle = data.originAngle;
-      if (data.zeroTime !== undefined) restored.zeroTime = data.zeroTime;
-      if (data.fitModel) restored.fitModel = data.fitModel;
-      if (Number.isFinite(data.uncertaintyPx) && data.uncertaintyPx>=0) restored.uncertaintyPx = data.uncertaintyPx;
-      restored.measurementBudget = cleanBudget(data.measurementBudget);
-      // Start each app load in Tracker behind the welcome dialog. Restore data,
-      // but leave navigation to the welcome choices or the in-session tabs.
-      if (data.language) restored.language = data.language;
-      if (data.fps) restored.fps = data.fps;
-      if (data.cropStart !== undefined) restored.cropStart = data.cropStart;
-      if (data.cropEnd !== undefined) restored.cropEnd = data.cropEnd;
-      if (data.protractor !== undefined) restored.protractor = data.protractor;
-      if (data.tapeMeasure !== undefined) restored.tapeMeasure = data.tapeMeasure;
-      if (data.showVelocityVectors !== undefined) restored.showVelocityVectors = data.showVelocityVectors;
-      if (data.showAccelerationVectors !== undefined) restored.showAccelerationVectors = data.showAccelerationVectors;
-      if (data.vectorScale !== undefined) restored.vectorScale = data.vectorScale;
-      if (data.lineProfile !== undefined) restored.lineProfile = data.lineProfile;
-      if (data.wavelengthCalibration !== undefined) restored.wavelengthCalibration = data.wavelengthCalibration;
-      if (data.spectralMode !== undefined) restored.spectralMode = data.spectralMode;
-      if (data.activeReferenceOverlays !== undefined) restored.activeReferenceOverlays = data.activeReferenceOverlays;
-      if (data.showGuidelines !== undefined) restored.showGuidelines = data.showGuidelines;
-
-      return restored;
-    }
-  } catch (e) {
-    console.error("Failed to parse autosave data", e);
+  // Migrate / restore objects
+  if (data.objects) {
+    restored.objects = data.objects.map(o => ({
+      ...o,
+      mass: o.mass !== undefined ? o.mass : 1
+    }));
+    if (data.activeObjId) restored.activeObjId = data.activeObjId;
+  } else if (data.points) {
+    restored.objects = [
+      { id: 'A', name: 'Object A', color: '#ef4444', points: data.points, mass: 1 },
+      { id: 'B', name: 'Object B', color: '#3b82f6', points: [], mass: 1 }
+    ];
   }
 
-  return defaultState;
+  if (hasWork(data)) restored.hasRestoredData = true;
+
+  // Restore other fields if present
+  if (data.calibrationPoints) restored.calibrationPoints = data.calibrationPoints;
+  if (data.pixelsPerMeter) restored.pixelsPerMeter = data.pixelsPerMeter;
+  if (validDistance(data.scaleDistance)) {
+    restored.scaleDistance = data.scaleDistance;
+    restored.realDistanceInput = String(data.scaleDistance);
+  }
+  if (data.origin) {restored.origin = data.origin; restored.axesConfirmed = true;}
+  if (data.originAngle) restored.originAngle = data.originAngle;
+  if (data.zeroTime !== undefined) restored.zeroTime = data.zeroTime;
+  if (data.fitModel) restored.fitModel = data.fitModel;
+  if (Number.isFinite(data.uncertaintyPx) && data.uncertaintyPx>=0) restored.uncertaintyPx = data.uncertaintyPx;
+  restored.measurementBudget = cleanBudget(data.measurementBudget);
+  // Start each app load in Tracker behind the welcome dialog. Restore data,
+  // but leave navigation to the welcome choices or the in-session tabs.
+  if (data.language) restored.language = data.language;
+  if (data.fps) restored.fps = data.fps;
+  if (data.cropStart !== undefined) restored.cropStart = data.cropStart;
+  if (data.cropEnd !== undefined) restored.cropEnd = data.cropEnd;
+  if (data.protractor !== undefined) restored.protractor = data.protractor;
+  if (data.tapeMeasure !== undefined) restored.tapeMeasure = data.tapeMeasure;
+  if (data.showVelocityVectors !== undefined) restored.showVelocityVectors = data.showVelocityVectors;
+  if (data.showAccelerationVectors !== undefined) restored.showAccelerationVectors = data.showAccelerationVectors;
+  if (data.vectorScale !== undefined) restored.vectorScale = data.vectorScale;
+  if (data.lineProfile !== undefined) restored.lineProfile = data.lineProfile;
+  if (data.wavelengthCalibration !== undefined) restored.wavelengthCalibration = data.wavelengthCalibration;
+  if (data.spectralMode !== undefined) restored.spectralMode = data.spectralMode;
+  if (data.activeReferenceOverlays !== undefined) restored.activeReferenceOverlays = data.activeReferenceOverlays;
+  if (data.showGuidelines !== undefined) restored.showGuidelines = data.showGuidelines;
+
+  return restored;
+};
+
+const getInitialState = () => {
+  const defaultState = createDefaultState();
+  try {
+    const {data, prefs, recoverySavedAt} = readStartup();
+    const base = {...defaultState, recoverySavedAt, ...(typeof prefs?.language === 'string' ? {language: prefs.language} : {})};
+    return data ? applySaved(base, data) : base;
+  } catch (e) {
+    console.error("Failed to read saved session", e);
+    return defaultState;
+  }
 };
 
 const useStore = create((set, get) => ({
@@ -222,6 +239,40 @@ const useStore = create((set, get) => ({
   setShowInputModal: (showInputModal) => set({ showInputModal }),
   setRealDistanceInput: (realDistanceInput) => set({ realDistanceInput }),
   setIsScaleVisible: (isScaleVisible) => set({ isScaleVisible }),
+  setScaleDistance: (scaleDistance) => set({ scaleDistance: validDistance(scaleDistance) ? scaleDistance : null }),
+
+  // Opens calibration for a new scale, or for correcting the existing one.
+  // An edit keeps the placed endpoints and the last distance, and Cancel restores them.
+  startScaleEdit: () => {
+    const state=get();
+    if(!state.videoSrc && !state.imageSrc)return;
+    const w=state.videoDims.w || 600, h=state.videoDims.h || 400;
+    const editing=Boolean(state.pixelsPerMeter) && state.calibrationPoints.length===2;
+    set({
+      isCalibrating:true, isSettingOrigin:false, isTracking:false, reticlePos:null,
+      isScaleVisible:true, showInputModal:false, activeClickTarget:null,
+      scaleEditBackup:editing?{calibrationPoints:state.calibrationPoints}:null,
+      calibrationPoints:editing?state.calibrationPoints:[{x:w*0.4,y:h*0.5},{x:w*0.6,y:h*0.5}],
+      ...(validDistance(state.scaleDistance)?{realDistanceInput:String(state.scaleDistance)}:{}),
+    });
+  },
+  // Returns false when the distance or endpoints cannot define a scale.
+  applyScale: (metersInput) => {
+    const state=get(), meters=Number.parseFloat(metersInput);
+    const [p1,p2]=state.calibrationPoints;
+    if(!validDistance(meters) || !p1 || !p2)return false;
+    const distPx=Math.hypot(p2.x-p1.x,p2.y-p1.y);
+    if(!(distPx>0))return false;
+    set({pixelsPerMeter:distPx/meters, scaleDistance:meters, realDistanceInput:String(meters),
+      isCalibrating:false, showInputModal:false, isScaleVisible:true, scaleEditBackup:null});
+    return true;
+  },
+  cancelScaleEdit: () => {
+    const backup=get().scaleEditBackup;
+    set({calibrationPoints:backup?backup.calibrationPoints:[], isCalibrating:false, showInputModal:false, scaleEditBackup:null});
+  },
+  resetScale: () => set({pixelsPerMeter:null, scaleDistance:null, calibrationPoints:[], isCalibrating:false,
+    showInputModal:false, isScaleVisible:true, scaleEditBackup:null}),
   
   setIsSettingOrigin: (isSettingOrigin) => set({ isSettingOrigin }),
   setOrigin: (origin) => set({ origin }),
@@ -325,6 +376,16 @@ const useStore = create((set, get) => ({
 
   setMeasurementBudget: value => set({measurementBudget:cleanBudget(value)}),
 
+  // Opt-in restore of the previous session's work, offered by the welcome dialog.
+  recoverPreviousWork: () => {
+    let data=null;
+    try {data=readRecovery();} catch (e) {console.error("Failed to read recovery copy", e);}
+    if(!data){set({recoverySavedAt:null});return false;}
+    const restored=applySaved(createDefaultState(),data);
+    set({...Object.fromEntries(RECOVERED_KEYS.map(key=>[key,restored[key]])),hasRestoredData:true,recoverySavedAt:null});
+    return true;
+  },
+
   // Reset state to default
   resetProject: () => {
     if (typeof window !== 'undefined') {
@@ -341,6 +402,8 @@ const useStore = create((set, get) => ({
       measurementBudget: emptyBudget(),
       calibrationPoints: [],
       pixelsPerMeter: null,
+      scaleDistance: null,
+      scaleEditBackup: null,
       origin: null,
       originAngle: 0,
       zeroTime: true,
@@ -365,9 +428,12 @@ const useStore = create((set, get) => ({
       imageSrc: null,
       imageObj: null,
       spectralData: [],
-      error: null
+      error: null,
+      recoverySavedAt: null,
     });
-    localStorage.removeItem('physTracker_autosave');
+    clearWork();
+    // Later work in this session is autosaved again (Start new experiment does not reload).
+    if (typeof window !== 'undefined') window.isResetting = false;
   }
 }));
 
@@ -377,39 +443,14 @@ useStore.subscribe((state) => {
   if (typeof window !== 'undefined' && window.isResetting) {
     return;
   }
-  const stateToSave = {
-    objects: state.objects,
-    activeObjId: state.activeObjId,
-    calibrationPoints: state.calibrationPoints,
-    pixelsPerMeter: state.pixelsPerMeter,
-    origin: state.origin,
-    originAngle: state.originAngle,
-    zeroTime: state.zeroTime,
-    fitModel: state.fitModel,
-    uncertaintyPx: state.uncertaintyPx,
-    measurementBudget: state.measurementBudget,
-    viewMode: state.viewMode,
-    language: state.language,
-    fps: state.fps,
-    cropStart: state.cropStart,
-    cropEnd: state.cropEnd,
-    protractor: state.protractor,
-    tapeMeasure: state.tapeMeasure,
-    showVelocityVectors: state.showVelocityVectors,
-    showAccelerationVectors: state.showAccelerationVectors,
-    vectorScale: state.vectorScale,
-    lineProfile: state.lineProfile,
-    wavelengthCalibration: state.wavelengthCalibration,
-    spectralMode: state.spectralMode,
-    activeReferenceOverlays: state.activeReferenceOverlays,
-    showGuidelines: state.showGuidelines
-  };
+  const stateToSave = Object.fromEntries(PERSISTED_KEYS.map(key => [key, state[key]]));
+
   const fields = Object.values(stateToSave);
   if (lastSavedFields && fields.every((value, index) => value === lastSavedFields[index])) return;
   // Set before publishing status to avoid a recursive subscription write.
   lastSavedFields = fields;
   try {
-    localStorage.setItem('physTracker_autosave', JSON.stringify(stateToSave));
+    writeAutosave(stateToSave);
     if (state.saveStatus !== 'saved') useStore.setState({ saveStatus: 'saved' });
   } catch (e) {
     console.error("Failed to write to autosave", e);

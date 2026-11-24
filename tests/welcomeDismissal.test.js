@@ -39,7 +39,7 @@ function harness(name,props={},saved=null) {
   const module={exports:{}};
   vm.runInNewContext(bundles[name],{require:name=>name==='react'?hooks:name==='react/jsx-runtime'?runtime:require(name),
     module,exports:module.exports,console,FileReader,Blob,setTimeout,clearTimeout,
-    localStorage:{getItem:()=>saved===null?null:JSON.stringify(saved),setItem(){}},window:{confirm:()=>true},URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){}}});
+    sessionStorage:{getItem:()=>saved===null?null:JSON.stringify(saved),setItem(){}},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},window:{confirm:()=>true},URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){}}});
   function render(){index=0;tree=module.exports.Component(props);}
   function all(node){if(!node||typeof node!=='object')return [];return [node,...[node.props?.children,node.props?.worksheetControls,node.props?.axisControls].flat(Infinity).flatMap(all)];}
   render();

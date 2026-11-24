@@ -1,12 +1,13 @@
 import {useEffect, useRef, useState} from 'react';
 import {Upload, FolderOpen, X} from 'lucide-react';
+import {savedAgo} from '../utils/sessionPersistence';
 
 const WELCOME_TEXT = {
-  en: {close:'Close welcome window', title:'Start or continue an experiment', description:'Track motion in a video, or explore spectroscopy and measurements in an image. You can also continue from a saved PhysTracker project.', media:'Open video or image', project:'Open saved project', restored:'Your project is loaded', restoreHelp:'Choose the original video or image to continue. Project files contain your measurements and settings, but don’t include the media.', locate:'Locate original media', restart:'Start a new experiment', warning:'Starting a new experiment replaces the restored work. Download a copy before continuing if you need to keep it.', save:'Download project', proceed:'Start new experiment', back:'Keep restored project'},
-  es: {close:'Cerrar ventana de bienvenida', title:'Inicia o continúa un experimento', description:'Estudia el movimiento en un video o explora la espectroscopía y las mediciones en una imagen. También puedes continuar desde un proyecto guardado de PhysTracker.', media:'Abrir video o imagen', project:'Abrir proyecto guardado', restored:'Tu proyecto está cargado', restoreHelp:'Selecciona el video o la imagen original para continuar. Los proyectos contienen las mediciones y los ajustes, pero no incluyen los archivos multimedia.', locate:'Buscar video o imagen original', restart:'Iniciar un nuevo experimento', warning:'Iniciar un nuevo experimento reemplaza el trabajo restaurado. Descarga una copia antes de continuar si necesitas conservarlo.', save:'Descargar proyecto', proceed:'Iniciar nuevo experimento', back:'Conservar proyecto restaurado'},
+  en: {close:'Close welcome window', title:'Start or continue an experiment', description:'Track motion in a video, or explore spectroscopy and measurements in an image. You can also continue from a saved PhysTracker project.', media:'Open video or image', project:'Open saved project', restored:'Your project is loaded', restoreHelp:'Choose the original video or image to continue. Project files contain your measurements and settings, but don’t include the media.', locate:'Locate original media', restart:'Start a new experiment', warning:'Starting a new experiment replaces the restored work. Download a copy before continuing if you need to keep it.', save:'Download project', proceed:'Start new experiment', back:'Keep restored project', recover:'Recover previous work', recoverHelp:'Saved on this computer {ago}. Only choose this if it is your work.'},
+  es: {close:'Cerrar ventana de bienvenida', title:'Inicia o continúa un experimento', description:'Estudia el movimiento en un video o explora la espectroscopía y las mediciones en una imagen. También puedes continuar desde un proyecto guardado de PhysTracker.', media:'Abrir video o imagen', project:'Abrir proyecto guardado', restored:'Tu proyecto está cargado', restoreHelp:'Selecciona el video o la imagen original para continuar. Los proyectos contienen las mediciones y los ajustes, pero no incluyen los archivos multimedia.', locate:'Buscar video o imagen original', restart:'Iniciar un nuevo experimento', warning:'Iniciar un nuevo experimento reemplaza el trabajo restaurado. Descarga una copia antes de continuar si necesitas conservarlo.', save:'Descargar proyecto', proceed:'Iniciar nuevo experimento', back:'Conservar proyecto restaurado', recover:'Recuperar el trabajo anterior', recoverHelp:'Guardado en este equipo {ago}. Elige esta opción solo si es tu trabajo.'},
 };
 
-export default function WelcomeDialog({language, dark, restored, error, loading, onMedia, onProject, onSave, onStartNew, onClose, onGraphing}) {
+export default function WelcomeDialog({language, dark, restored, recoverySavedAt, error, loading, onMedia, onProject, onSave, onStartNew, onRecover, onClose, onGraphing}) {
   const t=WELCOME_TEXT[language] || WELCOME_TEXT.en;
   const dialog=useRef(null), media=useRef(null), project=useRef(null);
   const [confirmNew,setConfirmNew]=useState(false);
@@ -48,6 +49,10 @@ export default function WelcomeDialog({language, dark, restored, error, loading,
           {onGraphing?<button className={secondary} onClick={onGraphing}>{language==='es'?'Abrir datos y gráficos (sin video)':'Open data & graphing (no video)'}</button>:
 <a href="/graphing.html" target="_blank" rel="noopener" className={`${secondary} text-center`}>{language==='es'?'Abrir datos y gráficos (sin video) ↗':'Open data & graphing (no video) ↗'}</a>}
           {restored && <button className={`min-h-11 underline ${dark?'text-slate-300':'text-slate-600'}`} onClick={()=>setConfirmNew(true)}>{t.restart}</button>}
+          {!restored && recoverySavedAt && onRecover && <div className={`mt-2 border-t pt-3 text-center text-sm ${dark?'border-slate-600 text-slate-300':'border-slate-200 text-slate-600'}`}>
+            <button type="button" className="min-h-11 underline" aria-describedby="welcome-recover-help" onClick={onRecover}>{t.recover}</button>
+            <p id="welcome-recover-help" className="text-xs">{t.recoverHelp.replace('{ago}',savedAgo(recoverySavedAt,language))}</p>
+          </div>}
         </>}
       </div>
       <input ref={media} type="file" accept="video/*,image/*" className="hidden" onChange={e=>{onMedia(e);e.target.value='';}}/>

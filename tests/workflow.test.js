@@ -44,11 +44,11 @@ test('GW-09: guide instruction keys and steps have EN/ES coverage', () => {
 });
 
 test('GW-08: local saving reports failure and recovery, skips transient changes, and keeps project schema', async () => {
-  const oldStorage=globalThis.localStorage;
+  const oldStorage=globalThis.sessionStorage;
   const oldError=console.error;
   const writes=[];
   let fail=false;
-  globalThis.localStorage={getItem:()=>null,setItem:(key,value)=>{
+  globalThis.sessionStorage={getItem:()=>null,setItem:(key,value)=>{
     if(fail)throw new Error('quota exceeded');
     writes.push({key,value:JSON.parse(value)});
   }};
@@ -75,7 +75,7 @@ test('GW-08: local saving reports failure and recovery, skips transient changes,
     useStore.getState().setFps(120);
     assert.equal(useStore.getState().fpsConfirmed,false);
   } finally {
-    globalThis.localStorage=oldStorage;
+    globalThis.sessionStorage=oldStorage;
     console.error=oldError;
   }
 });
